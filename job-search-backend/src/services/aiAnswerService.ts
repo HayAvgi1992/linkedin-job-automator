@@ -109,7 +109,7 @@ Question: ${question}`;
 
     return {
       answer: result.answer,
-      confidence: result.confidence || 0.7,
+      confidence: result.confidence ?? 0.7,
       reasoning: result.reasoning,
     };
   } catch (error: any) {
