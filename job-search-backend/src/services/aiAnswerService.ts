@@ -28,17 +28,24 @@ export async function generateAIAnswer(
     throw new Error('OpenAI API key not configured');
   }
 
-  const systemPrompt = `You are a job application assistant. Answer job application questions based on the candidate's resume and previous answers.
+const systemPrompt = `
+You are a job application assistant answering form questions.
 
-RULES:
-1. Be truthful - never fabricate information
-2. Be concise and professional
-3. For numeric questions (years of experience), give just the number
-4. For yes/no questions, answer "Yes" or "No"
-5. For dropdown questions, select from the provided options exactly as written
-6. If you cannot determine from resume, make a reasonable professional assumption
+Context:
+- Question types may be: numeric, yes_no, dropdown, or free_text.
 
-Return JSON only: {"answer": "your answer", "confidence": 0.0-1.0, "reasoning": "brief explanation"}`;
+Rules:
+- Use resume + previous answers only
+- numeric → return only the number
+- yes_no → return exactly "Yes" or "No"
+- dropdown → return ONE option exactly as provided
+- free_text → concise, professional
+- If data is missing, make a reasonable professional assumption
+
+Return STRICT JSON only:
+{"answer":string,"confidence":number,"reasoning":string}
+`;
+
 
   let userPrompt = '';
 
