@@ -11,7 +11,7 @@ Chrome extension that finds, enriches, and auto-applies to LinkedIn jobs — so 
 | Feature | Status |
 |---------|--------|
 | Fetch 100 remote/Easy Apply jobs in one click | Done |
-| 3-layer salary estimation with confidence scores | Done |
+| 4-layer salary estimation with confidence scores | Done |
 | Automated Easy Apply (form fill, multi-step, submit) | Done |
 | Bulk auto-apply across all search results | Done |
 | Answer bank — learns your responses, never asks twice | Done |
@@ -49,13 +49,14 @@ Easy Apply Controller — DOM manipulation, Shadow DOM traversal,
                          form detection, auto-fill, multi-step navigation
 ```
 
-### Salary Estimation — 3 Layers
+### Salary Estimation — 4 Layers
 
-1. **Coresignal API** — real salary data from aggregated job postings (0.90 confidence)
-2. **GPT-4o-mini** — market-rate estimation when data is sparse (0.80 confidence)
-3. **Algorithm fallback** — seniority multipliers, role adjustments, geo-based cost-of-living across 15+ markets (0.75 confidence)
+1. **LinkedIn Native** — salary data straight from the job posting when LinkedIn provides it (0.98 confidence)
+2. **Coresignal API** — real salary data from aggregated job postings across multiple sources (0.90 confidence)
+3. **GPT-4o-mini** — market-rate estimation when data is sparse (0.80 confidence)
+4. **Algorithm fallback** — seniority multipliers, role adjustments, geo-based cost-of-living across 15+ markets (0.75 confidence)
 
-Every salary shows its confidence score. No guessing.
+Jobs with LinkedIn-native salary skip the backend entirely. Every estimate shows its confidence score and source. No guessing.
 
 ### Easy Apply Automation
 
