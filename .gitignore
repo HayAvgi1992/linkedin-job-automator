@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Build output
+dist/
+build/
+
+# Environment & Secrets
+.env
+.env.local
+.env.*.local
+env
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+
+# Temp files
+*.tmp
+*.bak
+
+# Claude config
+.claude/
+
+# Backup & scratch files
+*.backup
+resume.txt
+afterModalDom.html
+beforeModalDom.html
+Chrome-with-Fraser-main/
+job-search-portal-backup/
+CAPABILITIES_ANALYSIS.md
