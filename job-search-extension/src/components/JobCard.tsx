@@ -105,6 +105,35 @@ export function JobCard({
             Easy Apply
           </span>
         )}
+        {job.matchScore && (
+          <div className="group relative">
+            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+              job.matchScore.overall >= 80 ? 'bg-success-muted text-success' :
+              job.matchScore.overall >= 60 ? 'bg-accent/10 text-accent' :
+              'bg-muted/10 text-muted'
+            }`}>
+              {job.matchScore.overall}% match
+            </span>
+            <div className="absolute bottom-full left-0 mb-1 hidden group-hover:block z-50
+              bg-elevated border border-edge rounded-lg p-2.5 shadow-lg min-w-[180px]">
+              <div className="text-[10px] space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-muted">Skills</span>
+                  <span className="text-primary font-medium">{job.matchScore.skills}%</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted">Experience</span>
+                  <span className="text-primary font-medium">{job.matchScore.experience}%</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted">Fit</span>
+                  <span className="text-primary font-medium">{job.matchScore.fit}%</span>
+                </div>
+                <p className="text-muted pt-1 border-t border-edge">{job.matchScore.reasoning}</p>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Actions */}
