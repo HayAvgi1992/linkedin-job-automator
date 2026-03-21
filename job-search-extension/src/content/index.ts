@@ -336,9 +336,11 @@ async function searchLinkedInJobs(params: {
     const data = await response.json();
     console.log('Successfully fetched jobs:', data.data?.paging?.total || 0);
 
+    const { jobs: pageJobs, appliedJobIds: pageApplied } = parseJobSearchResults(data);
     return {
       success: true,
-      data: parseJobSearchResults(data),
+      data: pageJobs,
+      appliedJobIds: pageApplied,
     };
   } catch (error: any) {
     console.error('Error searching jobs:', error);
@@ -401,11 +403,24 @@ function parseLinkedInSalary(salaryText: string): { min: number; max: number; is
 /**
  * Parse LinkedIn job search results
  */
-function parseJobSearchResults(data: any): any[] {
+function parseJobSearchResults(data: any): { jobs: any[]; appliedJobIds: string[] } {
   const jobs: any[] = [];
+  const appliedJobIds: string[] = [];
 
   try {
     const included = data.included || [];
+
+    // Build JobSeekerJobState map: jobId → actions
+    const jobStateMap = new Map<string, any[]>();
+    for (const el of included) {
+      if (el.$type === 'com.linkedin.voyager.dash.jobs.JobSeekerJobState' ||
+          el.entityUrn?.includes('fsd_jobSeekerJobState')) {
+        const jobId = el.entityUrn?.match(/\d+$/)?.[0];
+        if (jobId) {
+          jobStateMap.set(jobId, el.jobSeekerJobStateActions || []);
+        }
+      }
+    }
 
     // Find job posting cards (not the base job postings)
     for (const element of included) {
@@ -419,6 +434,18 @@ function parseJobSearchResults(data: any): any[] {
         if (!jobPostingUrn) continue;
 
         const jobId = extractJobId(jobPostingUrn);
+
+        // Extract real postedDate from footerItems
+        const footerItems = element.footerItems || [];
+        const listedDateItem = footerItems.find((item: any) => item.type === 'LISTED_DATE');
+        const postedDate = listedDateItem?.timeAt ? new Date(listedDateItem.timeAt) : new Date();
+
+        // Check applied status via jobStateMap
+        const actions = jobStateMap.get(jobId) || [];
+        const isApplied = actions.some((a: any) => a.jobSeekerJobStateEnums === 'APPLIED');
+        if (isApplied) {
+          appliedJobIds.push(jobId);
+        }
 
         // Parse salary from tertiaryDescription (LinkedIn's native salary data)
         const salaryText = element.tertiaryDescription?.text || '';
@@ -447,7 +474,6 @@ function parseJobSearchResults(data: any): any[] {
         }
 
         // Check for Easy Apply by looking at footerItems for EASY_APPLY_TEXT type
-        const footerItems = element.footerItems || [];
         const isEasyApply = footerItems.some((item: any) =>
           item.type === 'EASY_APPLY_TEXT' ||
           item.text?.text?.toLowerCase().includes('easy apply')
@@ -464,7 +490,7 @@ function parseJobSearchResults(data: any): any[] {
             city: element.secondaryDescription?.text || '',
             remote: element.secondaryDescription?.text?.toLowerCase().includes('remote') || false,
           },
-          postedDate: new Date(),
+          postedDate,
           description: '',
           applicants: 0,
           easyApply: isEasyApply,
@@ -482,12 +508,12 @@ function parseJobSearchResults(data: any): any[] {
       }
     }
 
-    console.log('Parsed jobs:', jobs.length);
+    console.log('Parsed jobs:', jobs.length, '| Already applied:', appliedJobIds.length);
   } catch (error) {
     console.error('Error parsing jobs:', error);
   }
 
-  return jobs;
+  return { jobs, appliedJobIds };
 }
 
 /**

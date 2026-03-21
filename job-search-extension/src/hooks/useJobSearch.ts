@@ -56,6 +56,7 @@ export function useJobSearch() {
 
     try {
       const allJobs: Job[] = [];
+      const allAppliedJobIds: string[] = [];
       const maxPages = 4;
 
       for (let page = 0; page < maxPages; page++) {
@@ -75,6 +76,9 @@ export function useJobSearch() {
 
         if (response?.success) {
           allJobs.push(...(response.data || []));
+          if (Array.isArray(response.appliedJobIds)) {
+            allAppliedJobIds.push(...response.appliedJobIds);
+          }
         } else {
           console.error('Failed to fetch page', page, response?.error);
         }
@@ -89,6 +93,10 @@ export function useJobSearch() {
       const filteredJobs = params.easyApplyOnly
         ? allJobs.filter(j => j.easyApply)
         : allJobs;
+
+      if (allAppliedJobIds.length > 0) {
+        console.log('Jobs already applied on LinkedIn:', allAppliedJobIds);
+      }
 
       setJobs(filteredJobs);
       enrichJobsWithSalary(filteredJobs);
@@ -130,6 +138,9 @@ export function useJobSearch() {
         if (response?.success) {
           const batch = response.data || [];
           newJobs.push(...batch);
+          if (Array.isArray(response.appliedJobIds) && response.appliedJobIds.length > 0) {
+            console.log('Jobs already applied on LinkedIn (load more):', response.appliedJobIds);
+          }
           if (batch.length < 25) {
             setHasMoreJobs(false);
             break;
