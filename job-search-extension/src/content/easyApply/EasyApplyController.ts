@@ -56,6 +56,12 @@ async function waitForElement(selector: string, timeout = 5000): Promise<HTMLEle
 // Re-export for potential use
 void waitForElement;
 
+// ============================================
+// CONTENT-SCRIPT INJECTED MISSING INPUT MODAL (Bug 3)
+// Shows directly on LinkedIn page — works whether popup is open or not.
+// Returns user's answer or null (skip/timeout).
+// ============================================
+
 // Global reference to the Shadow DOM root where the modal lives
 let currentShadowRoot: ShadowRoot | null = null;
 
@@ -428,13 +434,20 @@ export class EasyApplyController {
   /**
    * Start auto-apply process for current job
    */
-  async startAutoApply(): Promise<AutoApplyResult> {
+  async startAutoApply(answerOverride?: { field: string; value: string }): Promise<AutoApplyResult> {
     if (this.isRunning) {
       return { success: false, error: 'Auto-apply already in progress' };
     }
 
     this.isRunning = true;
     let questionsAnswered = 0;
+
+    // Keep the MV3 service worker alive during form automation.
+    // Chrome kills the SW after ~30s of inactivity. This heartbeat
+    // ensures the SW stays alive to receive our easyApply_complete message.
+    const keepalive = setInterval(() => {
+      try { chrome.runtime.sendMessage({ action: '_keepalive' }); } catch {}
+    }, 20000);
 
     // CRITICAL: Reset Shadow DOM reference at the start of each application
     // This prevents stale references from previous applications causing issues
@@ -725,11 +738,11 @@ export class EasyApplyController {
 
       while (currentStep < maxSteps) {
         currentStep++;
-        console.log(`📄 Processing step ${currentStep}`);
+        try { chrome.runtime.sendMessage({ action: '_debug', msg: `Step ${currentStep} | URL: ${window.location.href}` }); } catch {}
 
         // Get current section type
         const sectionTitle = this.getCurrentSectionTitle();
-        console.log(`Section: ${sectionTitle}`);
+        try { chrome.runtime.sendMessage({ action: '_debug', msg: `Step ${currentStep} section: "${sectionTitle}"` }); } catch {}
 
         // Check if we're on the SUCCESS/confirmation page
         // LinkedIn shows "Application sent" dialog after successful submission
@@ -752,42 +765,22 @@ export class EasyApplyController {
 
         // Check if we're on review page
         if (sectionTitle.toLowerCase().includes('review')) {
-          console.log('✅ Reached review page');
+          try { chrome.runtime.sendMessage({ action: '_debug', msg: `Step ${currentStep}: REVIEW PAGE — looking for submit button...` }); } catch {}
           const submitBtn = findSubmitButton();
+          try { chrome.runtime.sendMessage({ action: '_debug', msg: `Step ${currentStep}: Submit button found: ${!!submitBtn}${submitBtn ? ` text="${submitBtn.textContent?.trim().substring(0, 30)}"` : ''}` }); } catch {}
 
           if (submitBtn) {
-            console.log('🖱️ Clicking Submit button');
+            try { chrome.runtime.sendMessage({ action: '_debug', msg: `Step ${currentStep}: Clicking Submit button...` }); } catch {}
             submitBtn.click();
-            await sleep(2000);
-
-            // Verify submission succeeded (modal should close or show success)
-            const modalStillOpen = findModal();
-            if (!modalStillOpen) {
-              console.log('🎉 Application submitted! (modal closed)');
-              return { success: true, questionsAnswered };
-            }
-
-            // Check for success message
-            const successMsg = document.querySelector('[class*="success"], [class*="submitted"]');
-            if (successMsg) {
-              console.log('🎉 Application submitted! (success message found)');
-              return { success: true, questionsAnswered };
-            }
-
-            // Modal still open, might have errors
-            const errorMsg = document.querySelector('.artdeco-inline-feedback--error');
-            if (errorMsg) {
-              return {
-                success: false,
-                error: `Submission error: ${errorMsg.textContent?.trim()}`,
-                questionsAnswered
-              };
-            }
-
-            // Assume success if we clicked submit
-            console.log('🎉 Application submitted! (assumed)');
+            // Return success immediately — don't wait to verify.
+            // LinkedIn navigates/reloads the page after submit, which destroys
+            // the content script. Any sleep/check after click never completes.
+            // We've validated all fields and reached the review page, so
+            // clicking Submit means the application is submitted.
+            try { chrome.runtime.sendMessage({ action: '_debug', msg: `Step ${currentStep}: Submit clicked — returning success` }); } catch {}
             return { success: true, questionsAnswered };
           }
+
         }
 
         // Detect and fill form fields
@@ -801,50 +794,74 @@ export class EasyApplyController {
             continue;
           }
 
-          // Get answer for this field
-          const answer = await this.getAnswerForField(field);
+          // Check for answer override (user provided this answer via the popup modal)
+          // This bypasses the bank lookup which can return wrong answers due to fuzzy matching.
+          let answer: string | null = null;
+          if (answerOverride && field.label === answerOverride.field) {
+            answer = answerOverride.value;
+            try { chrome.runtime.sendMessage({ action: '_debug', msg: `Using answerOverride for "${field.label}": "${answer}"` }); } catch {}
+          } else {
+            answer = await this.getAnswerForField(field);
+          }
+          // Relay debug to background console
+          try {
+            chrome.runtime.sendMessage({
+              action: '_debug',
+              msg: `Answer for "${field.label}" (type=${field.type}): "${answer}" | currentValue="${field.currentValue}"`,
+            });
+          } catch {}
 
-          if (answer) {
-            await this.fillField(field, answer);
-            questionsAnswered++;
-            console.log(`✅ Filled: ${field.label} = ${answer}`);
-          } else if (field.required) {
-            console.log(`⚠️ No answer for required field: ${field.label}`);
-            // Return with info needed for user to provide input
-            const fieldLower = field.label.toLowerCase();
-            let hint = '';
-
-            if (fieldLower.includes('city') || fieldLower.includes('location')) {
-              hint = 'Set your city in Profile Settings';
-            } else if (fieldLower.includes('phone')) {
-              hint = 'Set your phone in Profile Settings';
-            } else if (fieldLower.includes('email')) {
-              hint = 'Set your email in Profile Settings';
-            } else if (fieldLower.includes('first name')) {
-              hint = 'First name is pre-filled from LinkedIn';
-            } else if (fieldLower.includes('last name')) {
-              hint = 'Last name is pre-filled from LinkedIn';
+          // For select fields, validate the answer matches an available option.
+          // AI sometimes returns indices ("2") or free-text instead of actual
+          // option values ("Yes"), which silently fails to fill the dropdown.
+          let validAnswer = answer;
+          if (answer && field.type === 'select') {
+            const selectEl = field.element as HTMLSelectElement;
+            const matchedOpt = Array.from(selectEl.options).find(
+              opt => opt.value === answer ||
+                     opt.textContent?.trim().toLowerCase() === answer.toLowerCase() ||
+                     opt.textContent?.trim().includes(answer) ||
+                     answer.includes(opt.textContent?.trim() || '')
+            );
+            if (!matchedOpt) {
+              try { chrome.runtime.sendMessage({ action: '_debug', msg: `Select answer "${answer}" doesn't match any option — treating as no answer` }); } catch {}
+              validAnswer = null;
             }
+          }
 
+          if (validAnswer) {
+            await this.fillField(field, validAnswer);
+            // Verify the fill stuck for selects
+            if (field.type === 'select') {
+              const selectEl = field.element as HTMLSelectElement;
+              try { chrome.runtime.sendMessage({ action: '_debug', msg: `Select verify: value="${selectEl.value}" selectedIndex=${selectEl.selectedIndex} (wanted="${validAnswer}")` }); } catch {}
+            }
+            questionsAnswered++;
+            console.log(`✅ Filled: ${field.label} = ${validAnswer}`);
+          } else if (field.required) {
+            console.log(`⚠️ No valid answer for required field: ${field.label}`);
+            // Return needsInput so the extension popup handles it.
+            // The old showMissingInputModal blocked indefinitely on the LinkedIn
+            // page, which the user might never see if they're in the popup.
             return {
               success: false,
-              error: `Need user input for: ${field.label}${hint ? ` (${hint})` : ''}`,
-              questionsAnswered,
               needsInput: {
                 field: field.label,
                 type: field.type,
-                options: field.options,
+                ...(field.options ? { options: field.options } : {}),
               },
-              canResume: true, // Modal is still open, can resume after user provides input
+              questionsAnswered,
             };
           }
         }
 
         // Handle resume selection if on resume step
         if (sectionTitle.includes('Resume')) {
+          try { chrome.runtime.sendMessage({ action: '_debug', msg: `Step ${currentStep}: handling resume step...` }); } catch {}
           await this.handleResumeStep();
         }
 
+        try { chrome.runtime.sendMessage({ action: '_debug', msg: `Step ${currentStep}: looking for Next/Submit/Review button...` }); } catch {}
         // Click Next button using the helper function
         const nextBtn = findNextButton();
 
@@ -864,18 +881,8 @@ export class EasyApplyController {
           const submitBtn = findSubmitButton();
 
           if (submitBtn) {
-            console.log('🖱️ Clicking Submit button');
+            try { chrome.runtime.sendMessage({ action: '_debug', msg: `Step ${currentStep}: Clicking Submit (no-next path)` }); } catch {}
             submitBtn.click();
-            await sleep(2000);
-
-            // Verify submission
-            const modalStillOpen = findModal();
-            if (!modalStillOpen) {
-              console.log('🎉 Application submitted! (modal closed)');
-              return { success: true, questionsAnswered };
-            }
-
-            console.log('🎉 Application submitted!');
             return { success: true, questionsAnswered };
           }
 
@@ -883,16 +890,48 @@ export class EasyApplyController {
           break;
         }
 
-        console.log('🖱️ Clicking Next button');
+        try { chrome.runtime.sendMessage({ action: '_debug', msg: `Step ${currentStep}: clicking Next button` }); } catch {}
         nextBtn.click();
         await sleep(1500);
 
-        // Check for validation errors
-        const errors = document.querySelectorAll(SELECTORS.errorMessage);
+        // Check for validation errors — return needsInput so the user can fix
+        // the field via the MissingInputModal instead of hard-failing
+        const errors = (currentShadowRoot || document).querySelectorAll(SELECTORS.errorMessage);
         if (errors.length > 0) {
-          const errorText = (errors[0] as HTMLElement).textContent?.trim();
+          const errorEl = errors[0] as HTMLElement;
+          const errorText = errorEl.textContent?.trim() || 'Invalid answer';
           console.log(`❌ Validation error: ${errorText}`);
-          return { success: false, error: errorText, questionsAnswered };
+
+          // Walk up to find the field container and its label
+          const fieldContainer = errorEl.closest('.fb-dash-form-element, .jobs-easy-apply-form-element, [data-test-form-element]');
+          const fieldLabel = fieldContainer?.querySelector('label')?.textContent?.trim() || errorText;
+
+          // Clear the invalid field so it can be re-filled on retry
+          const input = fieldContainer?.querySelector('input, textarea, select') as HTMLInputElement | null;
+          if (input) {
+            console.log(`🧹 Clearing invalid field: ${fieldLabel}`);
+            input.value = '';
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+
+          // Determine field type from the input element
+          let fieldType = 'text';
+          const options: string[] = [];
+          if (input?.tagName === 'SELECT') {
+            fieldType = 'select';
+            Array.from((input as unknown as HTMLSelectElement).options).forEach(opt => {
+              if (opt.value) options.push(opt.textContent?.trim() || opt.value);
+            });
+          } else if (input?.type === 'number') {
+            fieldType = 'text';
+          }
+
+          return {
+            success: false,
+            needsInput: { field: fieldLabel, type: fieldType, ...(options.length > 0 ? { options } : {}) },
+            questionsAnswered,
+          };
         }
       }
 
@@ -902,6 +941,7 @@ export class EasyApplyController {
       console.error('Auto-apply error:', error);
       return { success: false, error: error.message, questionsAnswered };
     } finally {
+      clearInterval(keepalive);
       this.isRunning = false;
       // Reset Shadow DOM reference for clean state on next run
       currentShadowRoot = null;
@@ -913,7 +953,7 @@ export class EasyApplyController {
    * Get current section title from modal
    */
   private getCurrentSectionTitle(): string {
-    const titleEl = document.querySelector(SELECTORS.sectionTitle);
+    const titleEl = (currentShadowRoot || document).querySelector(SELECTORS.sectionTitle);
     return titleEl?.textContent?.trim() || '';
   }
 
@@ -1223,8 +1263,43 @@ export class EasyApplyController {
                  opt.textContent?.includes(value)
         );
         if (option) {
-          select.value = option.value;
+          console.log(`📝 Filling select: target="${option.value}" (text="${option.textContent?.trim()}")`);
+
+          // Strategy 1: Native setter + events (bypasses React controlled component)
+          const nativeSetter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set;
+          if (nativeSetter) {
+            nativeSetter.call(select, option.value);
+          } else {
+            select.value = option.value;
+          }
+          select.dispatchEvent(new Event('input', { bubbles: true }));
           select.dispatchEvent(new Event('change', { bubbles: true }));
+
+          // Strategy 2: Set selectedIndex directly
+          if (select.value !== option.value) {
+            console.log('📝 Strategy 1 failed, trying selectedIndex');
+            select.selectedIndex = option.index;
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+
+          // Strategy 3: Simulate full user interaction (focus, mousedown, click)
+          // Some LinkedIn components only respond to the full event sequence
+          if (select.value !== option.value) {
+            console.log('📝 Strategy 2 failed, trying full event simulation');
+            select.focus();
+            select.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+            await sleep(100);
+            option.selected = true;
+            select.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+            select.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            select.dispatchEvent(new Event('input', { bubbles: true }));
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+            select.blur();
+          }
+
+          console.log(`📝 Select final value: "${select.value}" (wanted: "${option.value}", match: ${select.value === option.value})`);
+        } else {
+          console.log(`⚠️ Select option not found for value "${value}". Available:`, Array.from(select.options).map(o => o.textContent?.trim()));
         }
         break;
       }
@@ -1233,7 +1308,14 @@ export class EasyApplyController {
       case 'textarea': {
         const input = element as HTMLInputElement | HTMLTextAreaElement;
         input.focus();
-        input.value = value;
+        // Use native setter to bypass React's controlled component interception
+        const proto = input instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+        const nativeSetter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+        if (nativeSetter) {
+          nativeSetter.call(input, value);
+        } else {
+          input.value = value;
+        }
         input.dispatchEvent(new Event('input', { bubbles: true }));
         input.dispatchEvent(new Event('change', { bubbles: true }));
         input.blur();

@@ -1,0 +1,32 @@
+export const LOCATIONS = [
+  { value: '', label: 'Any Location' },
+  // Countries
+  { value: 'united states', label: 'United States' },
+  { value: 'india', label: 'India' },
+  { value: 'united kingdom', label: 'United Kingdom' },
+  { value: 'canada', label: 'Canada' },
+  { value: 'australia', label: 'Australia' },
+  { value: 'germany', label: 'Germany' },
+  { value: 'france', label: 'France' },
+  // US Cities
+  { value: 'new york', label: 'New York, US' },
+  { value: 'san francisco', label: 'San Francisco, US' },
+  { value: 'los angeles', label: 'Los Angeles, US' },
+  { value: 'seattle', label: 'Seattle, US' },
+  { value: 'austin', label: 'Austin, US' },
+  { value: 'boston', label: 'Boston, US' },
+  { value: 'chicago', label: 'Chicago, US' },
+  { value: 'denver', label: 'Denver, US' },
+  { value: 'atlanta', label: 'Atlanta, US' },
+  { value: 'miami', label: 'Miami, US' },
+  { value: 'washington dc', label: 'Washington DC, US' },
+  // India Cities
+  { value: 'bangalore', label: 'Bangalore, IN' },
+  { value: 'mumbai', label: 'Mumbai, IN' },
+  { value: 'delhi', label: 'Delhi NCR, IN' },
+  { value: 'hyderabad', label: 'Hyderabad, IN' },
+  { value: 'pune', label: 'Pune, IN' },
+  { value: 'chennai', label: 'Chennai, IN' },
+  { value: 'gurgaon', label: 'Gurgaon, IN' },
+  { value: 'noida', label: 'Noida, IN' },
+] as const;
