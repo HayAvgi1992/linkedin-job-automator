@@ -125,8 +125,8 @@ export function useJobSearch() {
       storageListener = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
         if (area !== 'local') return;
         if (changes._descriptionProgress?.newValue) {
-          const progress = changes._descriptionProgress.newValue as { done: number; total: number };
-          setLoadingStage(`Fetching job details (${progress.done}/${progress.total})...`);
+          const progress = changes._descriptionProgress.newValue as { fetched: number; total: number };
+          setLoadingStage(`Fetching job details (${progress.fetched}/${progress.total})...`);
         }
       };
       chrome.storage.onChanged.addListener(storageListener);
@@ -141,10 +141,13 @@ export function useJobSearch() {
         enrichJobsWithSalary(filteredJobs),
       ]);
 
-      // Build descriptions map
-      const descriptions: Record<string, string> = descriptionsResult?.success
-        ? (descriptionsResult.descriptions || {})
-        : {};
+      // Build descriptions map — content script returns Record<string, string> directly,
+      // but background wraps it in sendMessage callback, so it could be the raw object
+      // or wrapped in the tab message response
+      const descriptions: Record<string, string> =
+        (typeof descriptionsResult === 'object' && !descriptionsResult?.success)
+          ? descriptionsResult as Record<string, string>  // Raw object from content script
+          : (descriptionsResult || {});
 
       // Step 7: Match score ranking
       setLoadingStage('Analyzing match...');
@@ -178,9 +181,18 @@ export function useJobSearch() {
         );
 
         for (const result of rankResults) {
-          if (result?.success && Array.isArray(result.scores)) {
+          if (result?.success && result.data?.scores && Array.isArray(result.data.scores)) {
             scoreUpdates.push(
-              ...result.scores.map((s: any) => ({ id: s.jobId, matchScore: s.matchScore }))
+              ...result.data.scores.map((s: any) => ({
+                id: s.jobId,
+                matchScore: {
+                  overall: s.overall,
+                  skills: s.skills,
+                  experience: s.experience,
+                  fit: s.fit,
+                  reasoning: s.reasoning || '',
+                } as MatchScore,
+              }))
             );
           }
         }
