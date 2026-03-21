@@ -14,6 +14,7 @@ interface JobState {
   addJobs: (jobs: Job[]) => void;
   updateJobSalary: (jobId: string, salary: Job['salary']) => void;
   updateJobsSalary: (updates: Array<{ id: string; salary: Job['salary'] }>) => void;
+  updateJobsMatchScore: (updates: Array<{ id: string; matchScore: import('../types').MatchScore }>) => void;
   updateStatus: (jobId: string, status: JobStatus) => void;
   toggleSave: (jobId: string) => void;
   markApplied: (jobId: string) => void;
@@ -146,6 +147,23 @@ export const useJobStore = create<JobState>((set, get) => ({
     });
     set({ jobs });
     persistDebounced(jobs, get().jobStatuses);
+  },
+
+  updateJobsMatchScore: (updates) => {
+    const map = new Map(updates.map(u => [u.id, u.matchScore]));
+    const jobs = get().jobs.map(j => {
+      const matchScore = map.get(j.linkedinJobId);
+      return matchScore ? { ...j, matchScore } : j;
+    });
+    // Sort by match score descending, unscored last (sorted by postedDate)
+    jobs.sort((a, b) => {
+      const scoreA = a.matchScore?.overall ?? -1;
+      const scoreB = b.matchScore?.overall ?? -1;
+      if (scoreA !== scoreB) return scoreB - scoreA;
+      return new Date(b.postedDate).getTime() - new Date(a.postedDate).getTime();
+    });
+    set({ jobs });
+    persistNow(jobs, get().jobStatuses);
   },
 
   updateStatus: (jobId, status) => {

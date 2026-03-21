@@ -530,6 +530,92 @@ import { createEasyApplyController, EasyApplyController } from './easyApply/Easy
 // Easy Apply controller instance
 let easyApplyController: EasyApplyController | null = null;
 
+async function fetchJobDescriptions(jobIds: string[]): Promise<Record<string, string>> {
+  const csrfToken = document.cookie
+    .split('; ')
+    .find(row => row.startsWith('JSESSIONID='))
+    ?.split('=')[1]?.replace(/"/g, '') || '';
+
+  const descriptions: Record<string, string> = {};
+  const CONCURRENCY = 5;
+  const DELAY_BETWEEN_BATCHES = 200;
+  const MAX_DESC_LENGTH = 2000;
+
+  for (let i = 0; i < jobIds.length; i += CONCURRENCY) {
+    const batch = jobIds.slice(i, i + CONCURRENCY);
+
+    const results = await Promise.allSettled(
+      batch.map(async (jobId) => {
+        const jobUrn = encodeURIComponent(`urn:li:fsd_jobPosting:${jobId}`);
+        const url = `https://www.linkedin.com/voyager/api/graphql?includeWebMetadata=true&variables=(jobPostingUrn:${jobUrn})&queryId=voyagerJobsDashJobPostings.891aed7916d7453a37e4bbf5f1f60de4`;
+
+        let retries = 0;
+        while (retries < 3) {
+          const response = await fetch(url, {
+            headers: {
+              accept: 'application/vnd.linkedin.normalized+json+2.1',
+              'csrf-token': csrfToken,
+              'x-restli-protocol-version': '2.0.0',
+              'x-li-lang': 'en_US',
+              'x-li-track': JSON.stringify({
+                clientVersion: '1.13.42962',
+                mpVersion: '1.13.42962',
+                osName: 'web',
+                timezoneOffset: new Date().getTimezoneOffset() / -60,
+                deviceFormFactor: 'DESKTOP',
+                mpName: 'voyager-web',
+              }),
+            },
+          });
+
+          if (response.status === 429) {
+            retries++;
+            await new Promise(r => setTimeout(r, 1000 * Math.pow(2, retries)));
+            continue;
+          }
+
+          if (!response.ok) return { jobId, description: '' };
+
+          const data = await response.json();
+          const included = data.included || [];
+          for (const el of included) {
+            if (el.description?.text) {
+              return {
+                jobId,
+                description: el.description.text.substring(0, MAX_DESC_LENGTH),
+              };
+            }
+          }
+          return { jobId, description: '' };
+        }
+        return { jobId, description: '' };
+      })
+    );
+
+    for (const result of results) {
+      if (result.status === 'fulfilled' && result.value) {
+        descriptions[result.value.jobId] = result.value.description;
+      }
+    }
+
+    // Report progress back to background
+    try {
+      chrome.runtime.sendMessage({
+        action: '_descriptionProgress',
+        fetched: Object.keys(descriptions).length,
+        total: jobIds.length,
+      });
+    } catch {}
+
+    // Delay between batches
+    if (i + CONCURRENCY < jobIds.length) {
+      await new Promise(r => setTimeout(r, DELAY_BETWEEN_BATCHES));
+    }
+  }
+
+  return descriptions;
+}
+
 // Listen for messages from popup/background
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   // Ping handler - used to verify content script is loaded and ready
@@ -544,6 +630,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       toggleBtn.click();
     }
     return false;
+  }
+
+  if (message.action === 'fetchJobDescriptions') {
+    fetchJobDescriptions(message.jobIds).then(sendResponse);
+    return true;
   }
 
   if (message.action === 'searchLinkedInJobs') {

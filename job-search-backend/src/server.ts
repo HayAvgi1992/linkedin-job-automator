@@ -7,6 +7,7 @@ import { salaryRoutes, salaryCache } from './routes/salary';
 import { profileRoutes } from './routes/profile';
 import { questionRoutes } from './routes/questions';
 import { aiRoutes } from './routes/ai';
+import { rankingRoutes } from './routes/ranking';
 
 // Connect to MongoDB
 mongoose.connect(process.env.MONGODB_URI!, {
@@ -34,6 +35,7 @@ app.use('/api', salaryRoutes);
 app.use('/api', profileRoutes);
 app.use('/api', questionRoutes);
 app.use('/api', aiRoutes);
+app.use('/api', rankingRoutes);
 
 // Health check
 app.get('/health', (_req: Request, res: Response) => {

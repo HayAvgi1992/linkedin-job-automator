@@ -640,6 +640,48 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
     return false;
   }
 
+  // Forward description fetch to content script on a specific tab
+  if (request.action === 'fetchJobDescriptions') {
+    const tabId = request.tabId;
+    if (tabId) {
+      chrome.tabs.sendMessage(tabId, {
+        action: 'fetchJobDescriptions',
+        jobIds: request.jobIds,
+      }, (response: any) => {
+        if (chrome.runtime.lastError) {
+          sendResponse({ success: false, error: chrome.runtime.lastError.message });
+        } else {
+          sendResponse(response);
+        }
+      });
+    } else {
+      sendResponse({ success: false, error: 'No tabId provided' });
+    }
+    return true;
+  }
+
+  if (request.action === 'rankJobs') {
+    fetch(`${API_BASE}/api/jobs/rank`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ visitorId: request.visitorId, jobs: request.jobs }),
+    })
+      .then(response => {
+        if (response.ok) return response.json();
+        throw new Error(`API returned ${response.status}`);
+      })
+      .then(data => sendResponse({ success: true, data }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+
+  if (request.action === '_descriptionProgress') {
+    chrome.storage.local.set({
+      _descriptionProgress: { fetched: request.fetched, total: request.total },
+    });
+    return false;
+  }
+
   // ---- Salary enrichment ----
   if (request.action === 'enrichSalary') {
     fetch(`${API_BASE}/api/enrich-salary`, {
