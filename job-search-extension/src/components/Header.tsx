@@ -23,7 +23,7 @@ export function Header({ view, onSetView }: HeaderProps) {
             <Briefcase className="w-3.5 h-3.5 text-accent" />
           </div>
           <div>
-            <h1 className="text-[13px] font-semibold text-primary tracking-tight leading-none">
+            <h1 className="text-[15px] font-bold text-primary tracking-tight leading-none">
               JobPilot
             </h1>
             <p className="text-[10px] text-muted mt-0.5">LinkedIn Automation</p>

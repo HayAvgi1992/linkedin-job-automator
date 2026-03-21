@@ -1,4 +1,5 @@
-import { Star, Check, X, Zap, MapPin } from 'lucide-react';
+import { useState } from 'react';
+import { Star, Check, X, Zap, MapPin, ChevronDown } from 'lucide-react';
 import { SalarySkeleton } from './SkeletonCard';
 import type { Job, JobStatus, AutoApplyStatus } from '../types';
 
@@ -29,6 +30,18 @@ function SalaryBadge({ source }: { source?: string }) {
   }
 }
 
+function ScoreBar({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-[10px] text-muted w-16">{label}</span>
+      <div className="score-bar-track flex-1">
+        <div className="score-bar-fill" style={{ width: `${value}%` }} />
+      </div>
+      <span className="mono text-[10px] text-primary font-medium w-7 text-right">{value}%</span>
+    </div>
+  );
+}
+
 export function JobCard({
   job,
   status,
@@ -42,39 +55,77 @@ export function JobCard({
   onOpen,
   index = 0,
 }: JobCardProps) {
+  const [scoreOpen, setScoreOpen] = useState(false);
+
   const statusClass = isApplied
     ? 'card-status-applied'
     : isSaved
     ? 'card-status-saved'
     : '';
 
+  // Score-based card hierarchy
+  const scoreClass = job.matchScore
+    ? job.matchScore.overall >= 80
+      ? 'card-score-high'
+      : job.matchScore.overall >= 50
+      ? 'card-score-mid'
+      : 'card-score-low'
+    : 'card-unscored';
+
   return (
     <div
-      className={`card card-interactive stagger-in ${statusClass}`}
+      className={`card card-interactive stagger-in ${statusClass} ${scoreClass}`}
       style={{ animationDelay: `${index * 40}ms` }}
     >
-      {/* Top row: title + applied badge */}
+      {/* Top row: title + match score badge (always visible) */}
       <div className="flex items-start justify-between gap-2 mb-1">
         <h3
-          className="text-[13px] font-medium text-primary leading-snug cursor-pointer hover:text-accent transition-colors flex-1"
+          className="text-sm font-semibold text-primary leading-snug cursor-pointer hover:text-accent transition-colors flex-1"
           onClick={onOpen}
         >
           {job.title || 'Untitled Position'}
         </h3>
-        {isApplied && (
+        {job.matchScore ? (
+          <button
+            onClick={(e) => { e.stopPropagation(); setScoreOpen(!scoreOpen); }}
+            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 transition-colors cursor-pointer ${
+              job.matchScore.overall >= 80 ? 'bg-success-muted text-success' :
+              job.matchScore.overall >= 50 ? 'bg-accent-muted text-accent' :
+              'bg-elevated text-muted'
+            }`}
+          >
+            {job.matchScore.overall}%
+            <ChevronDown className={`w-2.5 h-2.5 transition-transform ${scoreOpen ? 'rotate-180' : ''}`} />
+          </button>
+        ) : isApplied ? (
           <span className="badge badge-emerald shrink-0">
             <Check className="w-2.5 h-2.5" />
             Applied
           </span>
-        )}
-        {status === 'queued' && !isSaved && !isApplied && (
+        ) : status === 'queued' && !isSaved ? (
           <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0 mt-1.5 animate-glow-pulse" />
-        )}
+        ) : null}
       </div>
 
       <p className="text-[11px] text-secondary mb-2">
         {job.company.name || 'Company Name Not Available'}
       </p>
+
+      {/* Score breakdown — inline expand (not hover tooltip) */}
+      {job.matchScore && (
+        <div className="score-breakdown" data-open={scoreOpen}>
+          <div className="score-breakdown-inner">
+            <div className="space-y-1.5 pb-2.5 mb-2 border-b border-edge">
+              <ScoreBar label="Skills" value={job.matchScore.skills} />
+              <ScoreBar label="Experience" value={job.matchScore.experience} />
+              <ScoreBar label="Fit" value={job.matchScore.fit} />
+              {job.matchScore.reasoning && (
+                <p className="text-[10px] text-muted pt-1 leading-relaxed">{job.matchScore.reasoning}</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Salary — shimmer skeleton while enriching */}
       {job.salary ? (
@@ -105,34 +156,8 @@ export function JobCard({
             Easy Apply
           </span>
         )}
-        {job.matchScore && (
-          <div className="group relative">
-            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-              job.matchScore.overall >= 80 ? 'bg-success-muted text-success' :
-              job.matchScore.overall >= 60 ? 'bg-accent/10 text-accent' :
-              'bg-muted/10 text-muted'
-            }`}>
-              {job.matchScore.overall}% match
-            </span>
-            <div className="absolute bottom-full left-0 mb-1 hidden group-hover:block z-50
-              bg-elevated border border-edge rounded-lg p-2.5 shadow-lg min-w-[180px]">
-              <div className="text-[10px] space-y-1">
-                <div className="flex justify-between">
-                  <span className="text-muted">Skills</span>
-                  <span className="text-primary font-medium">{job.matchScore.skills}%</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted">Experience</span>
-                  <span className="text-primary font-medium">{job.matchScore.experience}%</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted">Fit</span>
-                  <span className="text-primary font-medium">{job.matchScore.fit}%</span>
-                </div>
-                <p className="text-muted pt-1 border-t border-edge">{job.matchScore.reasoning}</p>
-              </div>
-            </div>
-          </div>
+        {!job.matchScore && !enriching && (
+          <span className="badge badge-neutral text-muted">No score</span>
         )}
       </div>
 

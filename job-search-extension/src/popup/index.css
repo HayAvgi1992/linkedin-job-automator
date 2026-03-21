@@ -70,35 +70,40 @@
   --animate-glow-pulse: glow-pulse 2s ease-in-out infinite;
 }
 
-/* --- Dark Theme (DEFAULT) --- */
+/* --- Dark Theme (DEFAULT) — emerald-tinted neutrals --- */
 :root {
-  --bg-base: #09090b;
-  --bg-surface: #131316;
-  --bg-elevated: #1c1c21;
-  --bg-hover: #232329;
-  --bg-overlay: rgba(0, 0, 0, 0.7);
+  /* Surfaces: 6% gap between base→surface for card pop */
+  --bg-base: #060908;
+  --bg-surface: #111917;
+  --bg-elevated: #1c2825;
+  --bg-hover: #243230;
+  --bg-overlay: rgba(4, 8, 6, 0.85);
 
-  --border-color: #27272a;
-  --border-hover: #3f3f46;
+  /* Borders: clearly visible against surface */
+  --border-color: #2e3e38;
+  --border-hover: #40564e;
   --border-focus: #10b981;
 
-  --text-primary: #fafafa;
-  --text-secondary: #a1a1aa;
-  --text-muted: #52525b;
+  /* Text: bright, near-neutral — just a whisper of emerald */
+  --text-primary: #f0f4f2;
+  --text-secondary: #97a8a1;
+  --text-muted: #6b8078;
 
+  /* Accent: emerald */
   --accent: #10b981;
   --accent-hover: #059669;
-  --accent-muted: rgba(16, 185, 129, 0.15);
-  --accent-subtle: rgba(16, 185, 129, 0.06);
+  --accent-muted: rgba(16, 185, 129, 0.18);
+  --accent-subtle: rgba(16, 185, 129, 0.08);
 
-  --info: #818cf8;
-  --info-muted: rgba(129, 140, 248, 0.12);
+  /* Semantic colors — slightly boosted for dark mode readability */
+  --info: #8b95ff;
+  --info-muted: rgba(139, 149, 255, 0.14);
   --warning: #fbbf24;
-  --warning-muted: rgba(251, 191, 36, 0.12);
-  --danger: #f87171;
-  --danger-muted: rgba(248, 113, 113, 0.12);
-  --success: #34d399;
-  --success-muted: rgba(52, 211, 153, 0.12);
+  --warning-muted: rgba(251, 191, 36, 0.14);
+  --danger: #fb8080;
+  --danger-muted: rgba(251, 128, 128, 0.14);
+  --success: #3ee0a5;
+  --success-muted: rgba(62, 224, 165, 0.14);
 
   color-scheme: dark;
 }
@@ -416,6 +421,8 @@ body {
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
   padding: 14px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2),
+              0 0 0 0 transparent;
   transition: border-color 150ms cubic-bezier(0.25, 1, 0.5, 1),
               box-shadow 150ms cubic-bezier(0.25, 1, 0.5, 1),
               transform 150ms cubic-bezier(0.25, 1, 0.5, 1);
@@ -424,7 +431,7 @@ body {
 .card-interactive:hover {
   border-color: var(--border-hover);
   transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12),
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25),
               0 0 0 1px var(--border-hover);
 }
 
@@ -645,6 +652,232 @@ body {
    ACCESSIBILITY: Reduced Motion
    ============================================ */
 
+/* ============================================
+   COMPONENT: Pipeline Progress (search loading)
+   ============================================ */
+
+.pipeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 20px 0;
+}
+
+.pipeline-stage {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 0;
+  position: relative;
+}
+
+/* Vertical connector line between stages */
+.pipeline-stage:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  left: 13px;
+  top: 36px;
+  bottom: -4px;
+  width: 1px;
+  background: var(--border-color);
+}
+
+.pipeline-stage[data-state="done"]:not(:last-child)::after {
+  background: var(--accent);
+}
+
+.pipeline-dot {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 300ms cubic-bezier(0.25, 1, 0.5, 1);
+  border: 1.5px solid var(--border-color);
+  background: var(--bg-surface);
+  color: var(--text-muted);
+}
+
+.pipeline-stage[data-state="active"] .pipeline-dot {
+  border-color: var(--accent);
+  background: var(--accent-muted);
+  color: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-subtle);
+}
+
+.pipeline-stage[data-state="done"] .pipeline-dot {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.pipeline-stage[data-state="waiting"] .pipeline-dot {
+  opacity: 0.4;
+}
+
+.pipeline-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  line-height: 26px;
+  transition: color 200ms;
+}
+
+.pipeline-stage[data-state="active"] .pipeline-label {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.pipeline-stage[data-state="done"] .pipeline-label {
+  color: var(--text-secondary);
+}
+
+.pipeline-detail {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.pipeline-stage[data-state="active"] .pipeline-detail {
+  color: var(--accent);
+}
+
+/* Dot pulse animation for active stage */
+@keyframes dot-pulse {
+  0%, 100% { box-shadow: 0 0 0 4px var(--accent-subtle); }
+  50% { box-shadow: 0 0 0 8px transparent; }
+}
+
+.pipeline-stage[data-state="active"] .pipeline-dot {
+  animation: dot-pulse 2s ease-in-out infinite;
+}
+
+/* ============================================
+   COMPONENT: Score-based Card Hierarchy
+   ============================================ */
+
+.card-score-high {
+  border-color: rgba(16, 185, 129, 0.35);
+  background: linear-gradient(
+    135deg,
+    var(--bg-surface) 0%,
+    rgba(16, 185, 129, 0.05) 100%
+  );
+}
+
+.card-score-high:hover {
+  border-color: rgba(16, 185, 129, 0.55);
+}
+
+.card-score-mid {
+  border-color: var(--border-color);
+}
+
+.card-score-low {
+  opacity: 0.75;
+  border-color: var(--border-color);
+}
+
+.card-score-low:hover {
+  opacity: 1;
+}
+
+.card-unscored {
+  border-style: dashed;
+  border-color: var(--border-color);
+}
+
+/* ============================================
+   COMPONENT: Match Score Breakdown (inline)
+   ============================================ */
+
+.score-breakdown {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 250ms cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.score-breakdown[data-open="true"] {
+  grid-template-rows: 1fr;
+}
+
+.score-breakdown-inner {
+  overflow: hidden;
+}
+
+.score-bar-track {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--bg-elevated);
+}
+
+.score-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--accent);
+  transition: width 400ms cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+/* ============================================
+   COMPONENT: Filter Tab (active indicator)
+   ============================================ */
+
+.filter-tab {
+  position: relative;
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  font-weight: 500;
+  height: 32px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid transparent;
+}
+
+.filter-tab:hover {
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+}
+
+.filter-tab[data-active="true"] {
+  color: var(--accent);
+  background: var(--accent-muted);
+  border-color: rgba(16, 185, 129, 0.2);
+  font-weight: 600;
+}
+
+.filter-tab-count {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  min-width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  padding: 0 5px;
+}
+
+.filter-tab[data-active="true"] .filter-tab-count {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* ============================================
+   ACCESSIBILITY: Reduced Motion
+   ============================================ */
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -675,4 +908,9 @@ body {
     animation: none;
     width: 100%;
   }
+
+  .pipeline-stage[data-state="active"] .pipeline-dot {
+    animation: none;
+  }
 }
+
