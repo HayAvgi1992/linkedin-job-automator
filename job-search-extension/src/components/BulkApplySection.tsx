@@ -56,26 +56,20 @@ export function BulkApplySection() {
     <>
       {/* Bulk Auto Apply */}
       <div className="card">
-        <h3 className="text-xs font-semibold text-primary mb-3 flex items-center gap-2">
-          <Zap className="w-3.5 h-3.5 text-accent" />
-          Bulk Auto Apply
-        </h3>
-        <p className="text-[11px] text-secondary mb-3">
-          Auto-apply to all Easy Apply jobs from your search results.
-        </p>
-
-        {/* Stats */}
-        <div className="flex gap-2 mb-3">
-          <div className="flex-1 p-2.5 rounded-lg bg-elevated text-center transition-colors">
-            <div className="mono text-lg font-bold text-primary">{readyToApply}</div>
-            <div className="text-[10px] text-muted">Easy Apply</div>
-            {nonEasyApply > 0 && (
-              <div className="text-[9px] text-muted mt-0.5">+{nonEasyApply} manual</div>
-            )}
-          </div>
-          <div className="flex-1 p-2.5 rounded-lg bg-success-muted text-center transition-colors">
-            <div className="mono text-lg font-bold text-success">{appliedCount}</div>
-            <div className="text-[10px] text-success">Applied</div>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-xs font-semibold text-primary flex items-center gap-2">
+            <Zap className="w-3.5 h-3.5 text-accent" />
+            Bulk Auto Apply
+          </h3>
+          {/* Inline stats — no nested cards */}
+          <div className="flex items-center gap-3 text-[11px]">
+            <span className="text-secondary">
+              <span className="mono font-bold text-primary">{readyToApply}</span> ready
+              {nonEasyApply > 0 && <span className="text-muted ml-1">+{nonEasyApply}</span>}
+            </span>
+            <span className="text-success">
+              <span className="mono font-bold">{appliedCount}</span> applied
+            </span>
           </div>
         </div>
 
@@ -128,7 +122,7 @@ export function BulkApplySection() {
 
         {/* Results summary (after bulk apply completes) */}
         {hasResults && (
-          <div className="mb-3 p-3 rounded-lg bg-elevated space-y-2">
+          <div className="mb-3 pt-3 border-t border-edge space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-primary">Results</span>
               <button

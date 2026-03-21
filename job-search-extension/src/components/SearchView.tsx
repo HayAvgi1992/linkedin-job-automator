@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Search, Loader2 } from 'lucide-react';
+import { Search, Check, FileText, Brain } from 'lucide-react';
 import { useJobSearch } from '../hooks/useJobSearch';
 import { useJobStore } from '../store/jobStore';
 import { useProfileStore } from '../store/profileStore';
@@ -16,7 +16,7 @@ export function SearchView({ onSetView }: SearchViewProps) {
   const [remoteOnly, setRemoteOnly] = useState(false);
   const [easyApplyOnly, setEasyApplyOnly] = useState(false);
 
-  const { loading, loadingStage, error, searchJobs } = useJobSearch();
+  const { loading, loadingStage, loadingProgress, error, searchJobs } = useJobSearch();
   const jobs = useJobStore(s => s.jobs);
   const { resumeInfo } = useProfileStore();
 
@@ -106,11 +106,42 @@ export function SearchView({ onSetView }: SearchViewProps) {
         </button>
       </div>
 
-      {/* Loading spinner with stage text */}
+      {/* Pipeline progress — phased stages */}
       {loading && (
-        <div className="flex flex-col items-center justify-center py-12 gap-3">
-          <Loader2 className="w-6 h-6 animate-spin text-accent" />
-          <p className="text-sm text-secondary">{loadingStage || 'Loading...'}</p>
+        <div className="pipeline animate-fade-in">
+          {[
+            { key: 'search', icon: Search, label: 'Searching LinkedIn', matchPrefix: 'Searching' },
+            { key: 'details', icon: FileText, label: 'Fetching job details', matchPrefix: 'Fetching' },
+            { key: 'match', icon: Brain, label: 'Analyzing match', matchPrefix: 'Analyzing' },
+          ].map((stage, i) => {
+            const activeIndex = loadingStage.startsWith('Analyzing') ? 2
+              : loadingStage.startsWith('Fetching') ? 1 : 0;
+            const state = i < activeIndex ? 'done' : i === activeIndex ? 'active' : 'waiting';
+            const Icon = stage.icon;
+
+            // Extract sub-detail from loadingStage (e.g. "(12/25)")
+            const detail = state === 'active' && loadingStage.includes('(')
+              ? loadingStage.slice(loadingStage.indexOf('('))
+              : state === 'active' && i === 0 && loadingProgress > 0
+              ? `${Math.round(loadingProgress)}%`
+              : '';
+
+            return (
+              <div key={stage.key} className="pipeline-stage" data-state={state}>
+                <div className="pipeline-dot">
+                  {state === 'done' ? (
+                    <Check className="w-3.5 h-3.5" />
+                  ) : (
+                    <Icon className="w-3.5 h-3.5" />
+                  )}
+                </div>
+                <div>
+                  <div className="pipeline-label">{stage.label}</div>
+                  {detail && <div className="pipeline-detail">{detail}</div>}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 

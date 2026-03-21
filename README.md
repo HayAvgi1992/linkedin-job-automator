@@ -1,6 +1,6 @@
 # LinkedIn Job Automator
 
-Chrome extension that finds, enriches, and auto-applies to LinkedIn jobs — so you can focus on interviews, not applications.
+Chrome extension that finds, ranks, and auto-applies to LinkedIn jobs — so you can focus on interviews, not applications.
 
 **Status: Actively building. Contributors welcome.**
 
@@ -12,18 +12,47 @@ Chrome extension that finds, enriches, and auto-applies to LinkedIn jobs — so 
 |---------|--------|
 | Fetch 100 remote/Easy Apply jobs in one click | Done |
 | 4-layer salary estimation with confidence scores | Done |
+| AI match scoring — skills, experience, fit breakdown per job | **New** |
+| Applied job detection — filters jobs you've already applied to | **New** |
+| Pipeline orchestration — parallel search + enrich + rank | **New** |
+| Phased loading UI — visual progress across pipeline stages | **New** |
+| Score-based card hierarchy — high-match jobs pop, low ones fade | **New** |
 | Automated Easy Apply (form fill, multi-step, submit) | Done |
 | Bulk auto-apply across all search results | Done |
 | Answer bank — learns your responses, never asks twice | Done |
 | Resume upload + AI skill extraction | Done |
 | Profile auto-fill (city, phone, work auth, start date) | Done |
 | Save / Applied / Rejected tracking with persistence | Done |
-| JD-resume matching to filter bad fits | In Progress |
-| Company enrichment (PDL, Hunter, Apollo) | In Progress |
+| Dark Terminal Luxe design system — Geist font, emerald accent | **New** |
+| Company enrichment (PDL, Hunter, Apollo) | Planned |
 | AI cover letter generation per job | Planned |
 | LinkedIn InMail & cold outreach automation | Planned |
 | Personalized resume generation per application | Planned |
 | Application analytics dashboard | Planned |
+
+---
+
+## What's New (v2)
+
+Since the first release, the extension went from "search and apply" to a full intelligence pipeline:
+
+### AI Match Scoring
+Every job gets a 0-100 match score based on your resume. The LLM evaluates three dimensions — **skills**, **experience**, and **fit** — and returns a one-line explanation. High-scoring jobs get a green-tinted card with prominent badge. Low scores fade. Unscored jobs get a dashed border and "No score" indicator. Click any score badge to expand the full breakdown inline.
+
+### Smart Applied Detection
+The extension now queries LinkedIn's GraphQL API to extract `JobSeekerJobState` for every search result. Jobs you've already applied to are automatically marked and filtered from the queue — no wasted clicks, no duplicates.
+
+### Pipeline Orchestration
+Search triggers a 4-stage parallel pipeline:
+1. **Search** — 4 pages of Voyager API results (100 jobs)
+2. **Details** — fetch full descriptions for non-applied jobs (with live progress counter)
+3. **Salary** — 4-layer enrichment runs in parallel with descriptions
+4. **Rank** — LLM scores all jobs against your resume in batches of 15
+
+The popup shows a phased progress indicator with pipeline stages instead of a generic spinner. Each stage transitions from waiting → active (with pulse) → done (with checkmark).
+
+### Design System Overhaul
+"Dark Terminal Luxe" — emerald-tinted neutrals, Geist variable font, proper dark mode contrast. Score-based card hierarchy gives visual weight to the jobs that matter most. Filter tabs with count pills. Flattened layouts (no card-in-card nesting). Glassmorphism used purposefully on modals only.
 
 ---
 
@@ -33,20 +62,19 @@ Chrome extension that finds, enriches, and auto-applies to LinkedIn jobs — so 
 LinkedIn Page
     |
     v
-Content Script — calls LinkedIn Voyager API, fetches 4 pages x 25 jobs
+Content Script — Voyager API search + GraphQL applied-state detection
     |
     v
-Extension Popup (React) — displays jobs, filters, actions
+Extension Popup (React 19 + Zustand) — pipeline orchestration, live progress
+    |                                      |
+    v                                      v
+Background Script                    Backend API (Express)
+  - Message routing                    - Salary enrichment (4 layers)
+  - Tab management                     - Job ranking (GPT-4o-mini)
+  - Keepalive                          - Profile + answer bank (MongoDB)
     |
     v
-Background Script — routes messages between popup, content script, and backend
-    |
-    v
-Backend API (Express) — salary enrichment, profile storage, answer bank
-    |
-    v
-Easy Apply Controller — DOM manipulation, Shadow DOM traversal,
-                         form detection, auto-fill, multi-step navigation
+Easy Apply Controller — Shadow DOM traversal, form fill, multi-step nav
 ```
 
 ### Salary Estimation — 4 Layers
@@ -57,6 +85,17 @@ Easy Apply Controller — DOM manipulation, Shadow DOM traversal,
 4. **Algorithm fallback** — seniority multipliers, role adjustments, geo-based cost-of-living across 15+ markets (0.75 confidence)
 
 Jobs with LinkedIn-native salary skip the backend entirely. Every estimate shows its confidence score and source. No guessing.
+
+### AI Match Scoring
+
+Upload your resume and the extension sends each job's description + your parsed skills to GPT-4o-mini. Returns:
+- **Overall** (0-100) — weighted composite
+- **Skills** (0-100) — how well your skills match the JD
+- **Experience** (0-100) — years and seniority alignment
+- **Fit** (0-100) — culture, location, role type match
+- **Reasoning** — one-line explanation
+
+Jobs are ranked by overall score. Cards visually scale: high-match jobs get emerald borders and gradient backgrounds, low-match jobs fade, unscored jobs show dashed borders.
 
 ### Easy Apply Automation
 
@@ -74,7 +113,7 @@ Jobs with LinkedIn-native salary skip the backend entirely. Every estimate shows
 ### 1. Clone
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/linkedin-job-automator.git
+git clone https://github.com/4ugusta/linkedin-job-automator.git
 cd linkedin-job-automator
 ```
 
@@ -105,8 +144,9 @@ Then in Chrome:
 1. Open [linkedin.com](https://linkedin.com)
 2. Click the extension panel on the right side
 3. Enter keywords, pick location, hit Search
-4. Watch 100 jobs load with salary estimates
-5. Use Auto Apply to bulk-apply hands-free
+4. Watch the pipeline: search → details → salary → match scoring
+5. Review ranked jobs — high matches at the top
+6. Use Auto Apply to bulk-apply hands-free
 
 ---
 
@@ -114,9 +154,11 @@ Then in Chrome:
 
 **Extension** — React 19, TypeScript, Tailwind CSS 4, Vite 7, Chrome Manifest V3, Zustand
 
-**Backend** — Express 5, TypeScript, MongoDB (Mongoose), OpenAI, Coresignal API
+**Backend** — Express 5, TypeScript, MongoDB (Mongoose), OpenAI (GPT-4o-mini), Coresignal API
 
-**Automation** — Chrome Content Scripts, Shadow DOM traversal, MutationObserver, LinkedIn Voyager API
+**Design** — Geist Variable Font, emerald accent system, score-based card hierarchy, pipeline progress UI
+
+**Automation** — Chrome Content Scripts, Shadow DOM traversal, MutationObserver, LinkedIn Voyager API, LinkedIn GraphQL API
 
 ---
 
@@ -126,19 +168,27 @@ Then in Chrome:
 linkedin-job-automator/
 ├── job-search-extension/       # Chrome extension (React + TypeScript)
 │   ├── src/
-│   │   ├── popup/              # Extension UI (App.tsx)
+│   │   ├── popup/              # Extension UI (App.tsx, design system CSS)
+│   │   ├── components/         # SearchView, JobCard, JobListView, BulkApply, etc.
+│   │   ├── hooks/              # useJobSearch (pipeline), useAutoApply
+│   │   ├── store/              # Zustand stores (jobs, profile, autoApply, questions)
+│   │   ├── types/              # Shared interfaces (Job, MatchScore, etc.)
 │   │   ├── content/            # Content scripts injected into LinkedIn
 │   │   │   └── easyApply/      # Auto-apply controller + DOM selectors
-│   │   └── background/         # Service worker, message routing
-│   ├── public/                 # Extension icons
+│   │   └── background/         # Service worker, message routing, API proxy
+│   ├── public/                 # Extension icons + Geist fonts
 │   └── manifest.json           # Chrome MV3 config
 │
 ├── job-search-backend/         # API server (Express + TypeScript)
 │   └── src/
-│       └── server.ts           # Routes, salary enrichment, profile, questions
+│       ├── routes/             # salary, ranking, profile, questions, ai
+│       ├── models/             # UserProfile, QuestionAnswer (Mongoose)
+│       ├── services/           # aiAnswerService (OpenAI)
+│       └── server.ts           # Express setup + middleware
 │
+├── CLAUDE.md                   # AI assistant context (architecture + conventions)
 ├── LICENSE                     # MIT
-└── README.md                   # You are here
+└── README.md
 ```
 
 ---
@@ -151,13 +201,12 @@ This is an active project and contributions are welcome — from first-time PRs 
 
 | Area | What's Involved | Good For |
 |------|----------------|----------|
-| **JD-Resume Matching** | NLP/embeddings to score job fit, filter dealbreakers | AI/ML engineers |
 | **Cover Letter Generator** | GPT integration, template system, PDF export | Backend + AI |
 | **InMail Automation** | LinkedIn messaging API, personalization, follow-up sequences | Full-stack |
 | **Cold Outreach Pipeline** | PDL/Hunter/Apollo integration, email/SMS sending via Brevo | Backend + APIs |
 | **Resume Tailoring** | Per-job resume edits, PDF generation, skill emphasis | AI + PDF |
 | **Analytics Dashboard** | Track apply > response > interview conversion | Frontend |
-| **UI/UX Overhaul** | Better design system, mobile-friendly popup, dark mode | Frontend + Design |
+| **Semantic Answer Matching** | Fuzzy/embedding-based question matching for answer bank | AI/ML |
 | **Testing** | Unit tests, E2E with Playwright, CI pipeline | DevOps + QA |
 | **Documentation** | API docs, architecture diagrams, video walkthroughs | Technical writing |
 
@@ -186,19 +235,18 @@ cd job-search-extension && npm run dev
 
 ### Now
 - Stabilize bulk auto-apply across edge cases (SDUI flows, non-standard forms)
-- Improve answer bank fuzzy matching
+- Improve answer bank with semantic/fuzzy matching
+- Chrome Web Store listing
 
 ### Next
-- JD-resume fit scoring with auto-filter
-- Company data enrichment (CEO, CTO, HR contacts via PDL + Hunter)
 - AI cover letter generation — personalized per job, not template garbage
+- Company data enrichment (CEO, CTO, HR contacts via PDL + Hunter)
 - LinkedIn InMail drafting with smart follow-up sequences
 - Cold email/text outreach from the extension via Brevo
 
 ### Later
 - Personalized resume generation per application
 - Application analytics (what's converting, what's not)
-- Chrome Web Store release
 - Multi-platform support (Indeed, Glassdoor)
 
 ---

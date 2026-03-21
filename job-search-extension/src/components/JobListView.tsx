@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Briefcase, Star, Check, Loader2 } from 'lucide-react';
+import { Briefcase, Star, Check } from 'lucide-react';
 import { useJobStore } from '../store/jobStore';
 import { useAutoApplyStore } from '../store/autoApplyStore';
 import { useJobSearch } from '../hooks/useJobSearch';
@@ -57,11 +57,6 @@ export function JobListView({ onSetView }: JobListViewProps) {
 
   return (
     <div className="flex-1 flex flex-col bg-base">
-      {/* Enrichment progress */}
-      {enriching && (
-        <div className="enrichment-bar" />
-      )}
-
       {/* Results Header */}
       <div className="px-4 py-3 border-b border-edge bg-surface">
         <div className="flex items-center justify-between mb-3">
@@ -82,25 +77,19 @@ export function JobListView({ onSetView }: JobListViewProps) {
             <button
               key={key}
               onClick={() => setFilter(key)}
-              className={`btn btn-sm flex-1 transition-all ${
-                filter === key
-                  ? 'btn-primary'
-                  : 'btn-secondary'
-              }`}
+              className="filter-tab flex-1"
+              data-active={filter === key}
             >
               {Icon && <Icon className="w-3 h-3" />}
               {label}
-              <span className="mono text-[10px] opacity-70">{count}</span>
+              <span className="filter-tab-count">{count}</span>
               {subCount && <span className="mono text-[9px] opacity-50">{subCount}</span>}
             </button>
           ))}
         </div>
 
         {enriching && (
-          <div className="mt-2 flex items-center gap-1.5 text-[11px] text-accent">
-            <Loader2 className="w-3 h-3 animate-spin" />
-            Enriching with salary data...
-          </div>
+          <div className="mt-2.5 enrichment-bar" />
         )}
       </div>
 
