@@ -158,47 +158,61 @@ router.post('/questions/lookup', async (req: Request, res: Response) => {
 
     // Get user profile first - needed for common field lookups
     const profile = await UserProfile.findOne({ visitorId });
-
-    // Check for common profile fields FIRST (high confidence answers)
     const normalizedQuestion = questionText.toLowerCase().trim();
-    const commonFieldAnswer = getCommonFieldAnswer(normalizedQuestion, profile, options);
-
-    if (commonFieldAnswer) {
-      console.log(`📋 Found common field answer for: "${questionText.substring(0, 50)}..."`);
-      return res.json({
-        success: true,
-        found: true,
-        answer: commonFieldAnswer.answer,
-        source: 'profile',
-        confidence: commonFieldAnswer.confidence,
-      });
-    }
-
     const qHash = hashQuestion(questionText);
+    const hasOptions = options && options.length > 0;
 
-    // Look for existing stored answer
+    // ---- Step 1: Always check stored answers first (user-provided are most reliable) ----
     const existing = await QuestionAnswer.findOne({
       visitorId,
       questionHash: qHash,
     });
 
     if (existing) {
-      // Update usage tracking
-      existing.timesUsed += 1;
-      existing.lastUsedAt = new Date();
-      await existing.save();
-
-      console.log(`✅ Found stored answer for: "${questionText.substring(0, 50)}..."`);
-      return res.json({
-        success: true,
-        found: true,
-        answer: existing.answer,
-        source: existing.answerSource,
-      });
+      // For select fields, validate stored answer matches an option
+      if (hasOptions) {
+        const matchedOption = options!.find((opt: string) =>
+          opt.toLowerCase() === existing.answer.toLowerCase() ||
+          opt.toLowerCase().includes(existing.answer.toLowerCase()) ||
+          existing.answer.toLowerCase().includes(opt.toLowerCase())
+        );
+        if (matchedOption) {
+          existing.timesUsed += 1;
+          existing.lastUsedAt = new Date();
+          await existing.save();
+          console.log(`✅ Found stored answer for: "${questionText.substring(0, 50)}..." → "${matchedOption}"`);
+          return res.json({ success: true, found: true, answer: matchedOption, source: existing.answerSource });
+        }
+        // Stored answer doesn't match options — skip it, try AI
+        console.log(`⚠️ Stored answer "${existing.answer}" doesn't match options [${options!.join(', ')}] — skipping`);
+      } else {
+        existing.timesUsed += 1;
+        existing.lastUsedAt = new Date();
+        await existing.save();
+        console.log(`✅ Found stored answer for: "${questionText.substring(0, 50)}..."`);
+        return res.json({ success: true, found: true, answer: existing.answer, source: existing.answerSource });
+      }
     }
 
-    // No stored answer found - try AI
-    console.log(`🤖 No stored answer, generating AI response for: "${questionText.substring(0, 50)}..."`);
+    // ---- Step 2: For non-select fields, try profile field matching ----
+    // For select/radio with options, skip — the greedy keyword matcher returns
+    // garbage like phone numbers for Yes/No questions. Let the AI handle these.
+    if (!hasOptions) {
+      const commonFieldAnswer = getCommonFieldAnswer(normalizedQuestion, profile, options);
+      if (commonFieldAnswer) {
+        console.log(`📋 Found common field answer for: "${questionText.substring(0, 50)}..."`);
+        return res.json({
+          success: true,
+          found: true,
+          answer: commonFieldAnswer.answer,
+          source: 'profile',
+          confidence: commonFieldAnswer.confidence,
+        });
+      }
+    }
+
+    // ---- Step 3: AI generation (always gets options for select fields) ----
+    console.log(`🤖 Generating AI response for: "${questionText.substring(0, 50)}..."${hasOptions ? ` with options [${options!.join(', ')}]` : ''}`);
 
     const previousAnswers = await QuestionAnswer.find({ visitorId }).limit(10);
 
@@ -210,14 +224,32 @@ router.post('/questions/lookup', async (req: Request, res: Response) => {
         skills: profile.resume.skills,
         yearsExperience: profile.resume.yearsExperience,
       } : null,
-      previousAnswers
+      previousAnswers,
+      options
     );
+
+    // For select fields, validate AI answer matches an option
+    let finalAnswer = aiResult.answer;
+    if (hasOptions && finalAnswer) {
+      const matchedOption = options!.find((opt: string) =>
+        opt.toLowerCase() === finalAnswer.toLowerCase() ||
+        opt.toLowerCase().includes(finalAnswer.toLowerCase()) ||
+        finalAnswer.toLowerCase().includes(opt.toLowerCase())
+      );
+      if (matchedOption) {
+        finalAnswer = matchedOption; // Use exact option text
+      } else {
+        console.log(`⚠️ AI answer "${finalAnswer}" doesn't match options [${options!.join(', ')}] — returning first option as fallback`);
+        // Don't return garbage — let the extension ask the user
+        finalAnswer = '';
+      }
+    }
 
     res.json({
       success: true,
       found: false,
-      suggestedAnswer: aiResult.answer,
-      confidence: aiResult.confidence,
+      suggestedAnswer: finalAnswer,
+      confidence: finalAnswer ? aiResult.confidence : 0,
       reasoning: aiResult.reasoning,
       source: 'ai',
     });

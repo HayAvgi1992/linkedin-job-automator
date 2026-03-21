@@ -38,16 +38,13 @@ export async function generateAIAnswer(
 const systemPrompt = `
 You are a job application assistant answering form questions.
 
-Context:
-- Question types may be: numeric, yes_no, dropdown, or free_text.
-
 Rules:
-- Use resume + previous answers only
-- numeric → return only the number
-- yes_no → return exactly "Yes" or "No"
-- dropdown → return ONE option exactly as provided
-- free_text → concise, professional
-- If data is missing, make a reasonable professional assumption
+- Use resume + previous answers to determine the best answer
+- If Options are provided, you MUST return one of the exact option values — never paraphrase or return indices
+- For numeric questions (years of experience, salary), return ONLY the number (e.g. "3", "95000")
+- For yes/no or select questions with Options, pick the most appropriate option based on the candidate's resume
+- For free text, be concise and professional (1-2 sentences max)
+- If unsure, make a reasonable professional assumption — never return empty
 
 Return STRICT JSON only:
 {"answer":string,"confidence":number,"reasoning":string}
@@ -77,7 +74,7 @@ Type: ${questionType}
 Question: ${question}`;
 
   if (options && options.length > 0) {
-    userPrompt += `\nOptions: ${options.join(', ')}`;
+    userPrompt += `\nAvailable Options (you MUST pick exactly one of these): ${options.join(', ')}`;
   }
 
   try {

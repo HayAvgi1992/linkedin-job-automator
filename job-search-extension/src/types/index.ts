@@ -19,6 +19,15 @@ export interface Job {
     confidence: number;
     source?: string; // 'linkedin', 'coresignal', 'openai', 'algorithm'
   };
+  matchScore?: MatchScore;
+}
+
+export interface MatchScore {
+  overall: number;    // 0-100
+  skills: number;     // 0-100
+  experience: number; // 0-100
+  fit: number;        // 0-100
+  reasoning: string;  // 1-line explanation
 }
 
 export type JobStatus = 'queued' | 'saved' | 'applying' | 'applied' | 'failed' | 'rejected' | 'skipped';
