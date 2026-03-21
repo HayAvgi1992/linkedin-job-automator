@@ -33,6 +33,15 @@ npm-debug.log*
 # Claude config
 .claude/
 
+# Superpowers brainstorm sessions
+.superpowers/
+
+# Internal specs & plans (not for public repo)
+docs/superpowers/
+
+# Network captures (contain auth tokens)
+*.har
+
 # Backup & scratch files
 *.backup
 resume.txt
