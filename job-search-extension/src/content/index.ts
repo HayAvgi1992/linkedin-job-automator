@@ -525,14 +525,145 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true; // Keep channel open for async response
   }
 
+  // Check page state: what apply button/badge is present?
+  // Used by background to wait for page to fully render before applying (Bug 4 fix)
+  if (message.action === 'easyApply_checkPage') {
+    // --- Check 1: "Already applied" badge ---
+    // LinkedIn shows this in many forms — broad search
+    const alreadyAppliedSelectors = [
+      '.artdeco-inline-feedback--success',
+      '[class*="applied-badge"]',
+      'span.artdeco-inline-feedback__message',
+      // LinkedIn 2026 UI: "Applied" pill/badge near top card
+      '.job-details-jobs-unified-top-card__primary-description-container [class*="applied"]',
+      '.jobs-unified-top-card [class*="applied"]',
+    ];
+
+    let alreadyApplied = false;
+    for (const sel of alreadyAppliedSelectors) {
+      if (document.querySelector(sel)) {
+        alreadyApplied = true;
+        break;
+      }
+    }
+
+    // Also search for "Applied" text anywhere in the top card / job header area
+    if (!alreadyApplied) {
+      const headerAreas = document.querySelectorAll(
+        '.job-details-jobs-unified-top-card__primary-description-container, ' +
+        '.jobs-unified-top-card, ' +
+        '.jobs-details-top-card, ' +
+        '.job-details-jobs-unified-top-card__container--two-pane, ' +
+        // Broader: any element near the job title
+        '.scaffold-layout__detail'
+      );
+      for (const area of headerAreas) {
+        const spans = area.querySelectorAll('span, div, li');
+        for (const el of spans) {
+          const text = el.textContent?.trim().toLowerCase() || '';
+          // Match "Applied" but not "applicants" or "apply"
+          if (text === 'applied' || text === 'applied ✓' || text.startsWith('applied ')) {
+            alreadyApplied = true;
+            break;
+          }
+        }
+        if (alreadyApplied) break;
+      }
+    }
+
+    if (alreadyApplied) {
+      sendResponse({ ready: true, pageState: 'already_applied' });
+      return false;
+    }
+
+    // --- Check 2: Easy Apply button ---
+    const easyApplySelectors = [
+      '[aria-label="Easy Apply to this job"]',
+      '[aria-label*="Easy Apply"]',
+      'a[href*="/apply/"]',
+      'button.jobs-apply-button',
+      '.jobs-apply-button--top-card button',
+    ];
+    for (const sel of easyApplySelectors) {
+      const el = document.querySelector(sel);
+      if (el) {
+        const text = el.textContent?.toLowerCase() || '';
+        const aria = el.getAttribute('aria-label')?.toLowerCase() || '';
+        if (text.includes('easy apply') || aria.includes('easy apply') || el.getAttribute('href')?.includes('/apply/')) {
+          sendResponse({ ready: true, pageState: 'easy_apply' });
+          return false;
+        }
+      }
+    }
+
+    // --- Check 3: Regular "Apply" button (external) ---
+    const allClickables = document.querySelectorAll('button, a');
+    for (const btn of allClickables) {
+      const text = btn.textContent?.trim().toLowerCase() || '';
+      const aria = btn.getAttribute('aria-label')?.toLowerCase() || '';
+      if ((text === 'apply' || text === 'apply now' || aria === 'apply' || aria.includes('apply on company')) && !text.includes('easy')) {
+        sendResponse({ ready: true, pageState: 'external_apply' });
+        return false;
+      }
+    }
+
+    // --- Fallback: Page loaded but no recognized apply element ---
+    // If the job title is visible, the page HAS rendered — there's just no apply button
+    // (could be: already applied with a different UI, job closed, or unrecognized layout)
+    const jobTitleEl = document.querySelector(
+      '.job-details-jobs-unified-top-card__job-title, ' +
+      '.jobs-unified-top-card__job-title, ' +
+      'h1.t-24, h1.t-20, ' +
+      '.scaffold-layout__detail h1, h2.t-24'
+    );
+    if (jobTitleEl && jobTitleEl.textContent?.trim()) {
+      // Page is loaded, just no apply element found — treat as "already applied" or unknown
+      console.log('📄 Page loaded (job title found) but no apply element — treating as already_applied');
+      sendResponse({ ready: true, pageState: 'already_applied' });
+      return false;
+    }
+
+    // Page genuinely not ready yet
+    sendResponse({ ready: false, pageState: 'loading' });
+    return false;
+  }
+
   // Auto-Apply: Start automation on current page
+  // Fire-and-forget: acknowledge immediately, send result back as a new message
+  // when done. The old sendResponse pattern broke because the multi-step form
+  // filling (answer lookups, DOM interactions, page transitions) takes too long
+  // and Chrome MV3 kills the message channel before sendResponse is called.
   if (message.action === 'easyApply_start') {
-    const { visitorId } = message;
+    const { visitorId, answerOverride } = message;
     if (!easyApplyController) {
       easyApplyController = createEasyApplyController(visitorId);
     }
-    easyApplyController.startAutoApply().then(sendResponse);
-    return true;
+    sendResponse({ acknowledged: true });
+    console.log('🔍 Content: easyApply_start received, URL:', window.location.href);
+    if (answerOverride) console.log('🔍 Content: answerOverride:', JSON.stringify(answerOverride));
+    console.log('🔍 Content: Starting startAutoApply()...');
+
+    const sendComplete = (result: any) => {
+      console.log('🔍 Content: Sending easyApply_complete:', JSON.stringify(result));
+      try {
+        chrome.runtime.sendMessage({ action: 'easyApply_complete', result })
+          .then(() => console.log('🔍 Content: easyApply_complete sent successfully'))
+          .catch((err: any) => console.error('🔍 Content: easyApply_complete send FAILED:', err));
+      } catch (err) {
+        console.error('🔍 Content: easyApply_complete send threw:', err);
+      }
+    };
+
+    easyApplyController.startAutoApply(answerOverride)
+      .then(result => {
+        console.log('🔍 Content: startAutoApply() resolved:', JSON.stringify(result));
+        sendComplete(result);
+      })
+      .catch(err => {
+        console.error('🔍 Content: startAutoApply() rejected:', err);
+        sendComplete({ success: false, error: err?.message || 'Apply failed' });
+      });
+    return false;
   }
 
   // Auto-Apply: Apply to a specific job by ID
@@ -548,7 +679,9 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
     if (currentUrl.includes(`/jobs/view/${jobId}`)) {
       // Already on the right page, just apply
-      easyApplyController.startAutoApply().then(sendResponse);
+      easyApplyController.startAutoApply()
+        .then(sendResponse)
+        .catch(err => sendResponse({ success: false, error: err?.message || 'Apply failed' }));
     } else {
       // Need to navigate first - tell popup to open the job and retry
       sendResponse({

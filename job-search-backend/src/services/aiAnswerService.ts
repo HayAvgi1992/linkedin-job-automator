@@ -1,7 +1,5 @@
 import { IQuestionAnswer } from '../models/QuestionAnswer';
 
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-
 interface ResumeData {
   rawText: string;
   skills: string[];
@@ -15,6 +13,15 @@ interface AIAnswerResult {
 }
 
 /**
+ * Strip markdown code block wrappers from OpenAI responses.
+ * OpenAI sometimes returns ```json\n{...}\n``` instead of raw JSON.
+ */
+function extractJSON(raw: string): string {
+  const match = raw.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
+  return match ? match[1].trim() : raw.trim();
+}
+
+/**
  * Generate an answer for a job application question using OpenAI
  */
 export async function generateAIAnswer(
@@ -24,7 +31,7 @@ export async function generateAIAnswer(
   previousAnswers: IQuestionAnswer[],
   options?: string[]
 ): Promise<AIAnswerResult> {
-  if (!OPENAI_API_KEY) {
+  if (!process.env.OPENAI_API_KEY) {
     throw new Error('OpenAI API key not configured');
   }
 
@@ -77,7 +84,7 @@ Question: ${question}`;
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -104,8 +111,8 @@ Question: ${question}`;
       throw new Error('No response from OpenAI');
     }
 
-    // Parse JSON response
-    const result = JSON.parse(content);
+    // Parse JSON response (strip markdown wrappers if present)
+    const result = JSON.parse(extractJSON(content));
 
     return {
       answer: result.answer,
@@ -131,7 +138,7 @@ export async function parseResumeWithAI(resumeText: string): Promise<{
   skills: string[];
   yearsExperience: number;
 }> {
-  if (!OPENAI_API_KEY) {
+  if (!process.env.OPENAI_API_KEY) {
     // Fallback to basic parsing
     return basicResumeParse(resumeText);
   }
@@ -150,7 +157,7 @@ Return JSON only:
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -169,7 +176,7 @@ Return JSON only:
     const content = data.choices?.[0]?.message?.content?.trim();
 
     if (content) {
-      const parsed = JSON.parse(content);
+      const parsed = JSON.parse(extractJSON(content));
       return {
         skills: parsed.skills || [],
         yearsExperience: parsed.yearsExperience || 0,
