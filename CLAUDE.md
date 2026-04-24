@@ -129,3 +129,63 @@ cd job-search-extension && npm run build  # Production build
 cd job-search-backend && npm run dev      # nodemon + ts-node
 cd job-search-backend && npm run build    # tsc → dist/
 ```
+
+## Prerequisites
+
+- Node.js 18+
+- npm
+- Chrome browser
+- MongoDB Atlas account (free tier works)
+- OpenAI API key
+
+## Setup
+
+### 1. Backend
+
+```bash
+cd job-search-backend
+npm install
+cp .env.example .env
+# Fill in .env with your credentials (see Environment Variables below)
+```
+
+### 2. Extension
+
+```bash
+cd job-search-extension
+npm install
+npm run dev   # starts Vite watch — outputs to dist/
+```
+
+## Environment Variables (`job-search-backend/.env`)
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `PORT` | No | Server port (default: 3001) |
+| `MONGODB_URI` | Yes | MongoDB Atlas connection string |
+| `MONGO_DB_NAME` | Yes | Database name (e.g. `job-search-portal`) |
+| `OPENAI_API_KEY` | Yes | Used for Q&A generation and resume parsing |
+| `CORESIGNAL_TOKEN` | No | Salary enrichment (primary) |
+| `PEOPLE_DATA_LAB_TOKEN` | No | Salary enrichment (fallback) |
+| `APOLLO_API_KEY` | No | Salary enrichment (fallback) |
+| `HUNTER_API_KEY` | No | Salary enrichment (fallback) |
+| `BREVO_API_KEY` | No | Email notifications |
+
+Salary enrichment tries providers in order: cache → Coresignal → PDL → Apollo → OpenAI algorithm. The extension works without any salary keys, just without salary data.
+
+## Loading the Extension in Chrome
+
+1. Run `npm run dev` in `job-search-extension/` so `dist/` is populated
+2. Open Chrome → `chrome://extensions`
+3. Enable **Developer mode** (toggle, top-right)
+4. Click **Load unpacked** → select `job-search-extension/dist/`
+5. Pin the extension to the toolbar
+
+After code changes, Vite rebuilds automatically. Click the refresh icon on the extension card in `chrome://extensions` to pick up the new build.
+
+## Chrome MV3 Gotchas
+
+- **Popup store rehydration** — Zustand stores reset on every popup close. Every store must hydrate from `chrome.storage` on open, not just on first mount.
+- **Service worker lifespan** — the SW goes inactive after ~30s of inactivity. Never hold long-running promises in the background script.
+- **Async `sendMessage`** — if a content script listener responds asynchronously, it must `return true` to keep the message channel open; otherwise the response is dropped.
+- **Content script double-injection** — LinkedIn is a SPA; navigating between pages can re-trigger content script injection. Guard injections with a flag on `window`.

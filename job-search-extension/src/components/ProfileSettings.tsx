@@ -46,6 +46,7 @@ export function ProfileSettings() {
               <option value="Singapore">Singapore</option>
               <option value="Netherlands">Netherlands</option>
               <option value="Ireland">Ireland</option>
+              <option value="Israel">Israel</option>
             </select>
           </div>
 

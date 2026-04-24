@@ -168,6 +168,7 @@ const GEO_IDS: Record<string, string> = {
   'australia': '101452733',
   'germany': '101282230',
   'france': '105015875',
+  'israel': '101620260',
 
   // US Cities/Metro Areas
   'new york': '90000070',
@@ -208,6 +209,19 @@ const GEO_IDS: Record<string, string> = {
   // Canada Cities
   'toronto': '100025096',
   'vancouver': '103366113',
+
+  // Israel Cities
+  'tel aviv': '101570771',
+  'tel aviv-yafo': '101570771',
+  'jerusalem': '104977092',
+  'haifa': '106166099',
+  'herzliya': '103818433',
+  'ramat gan': '103818433',
+  'petach tikva': '103818433',
+  'petah tikva': '103818433',
+  'kfar saba': '103818433',
+  'beer sheva': '104492884',
+  'beersheba': '104492884',
 };
 
 /**

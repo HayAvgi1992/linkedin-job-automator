@@ -145,6 +145,12 @@
    BASE RESETS
    ============================================ */
 
+html, body {
+  width: 420px;
+  min-height: 600px;
+  margin: 0;
+}
+
 body {
   font-family: var(--font-sans);
   font-weight: 400;
@@ -387,7 +393,7 @@ body {
   width: 100%;
   cursor: pointer;
   appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%2371717a' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-image: url("/icons/chevron-down.svg");
   background-repeat: no-repeat;
   background-position: right 12px center;
   padding-right: 32px;
