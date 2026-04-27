@@ -8,7 +8,7 @@ export const LOCATIONS = [
   { value: 'australia', label: 'Australia' },
   { value: 'germany', label: 'Germany' },
   { value: 'france', label: 'France' },
-  { value: 'israel', lablel: 'Israel'},
+  { value: 'israel', label: 'Israel' },
   // US Cities
   { value: 'new york', label: 'New York, US' },
   { value: 'san francisco', label: 'San Francisco, US' },
@@ -31,7 +31,7 @@ export const LOCATIONS = [
   { value: 'gurgaon', label: 'Gurgaon, IN' },
   { value: 'noida', label: 'Noida, IN' },
   { value: 'tel aviv', label: 'Tel Aviv, IL' },
-  { value: 'jerusalem', label: 'Noida, IL' },
+  { value: 'jerusalem', label: 'Jerusalem, IL' },
   { value: 'haifa', label: 'Haifa, IL' },
   { value: 'ramat gan', label: 'Ramat Gan, IL' },
   { value: 'beer sheva', label: 'Beer Sheva, IL' },

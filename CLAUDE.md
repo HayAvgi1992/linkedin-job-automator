@@ -112,6 +112,13 @@ Content Script (LinkedIn page)     Express Backend (localhost:3001)
 - visitorId is the sole user identifier — no auth system exists
 - Backend runs on localhost:3001, CORS allows all origins
 
+## Approval-First Workflow
+- Before making any code or file changes, propose the intended fix first and wait for explicit user approval.
+- Do not run write actions (edit/create/delete files, code formatting with write output, dependency installs that modify lockfiles) until the user approves.
+- Do not run git write actions (`commit`, `merge`, `rebase`, `push`, remote changes) without explicit user approval.
+- Read-only exploration (searching files, reading files, diagnostics) is allowed before approval.
+- If the user says "go ahead" (or equivalent), proceed with the approved change scope only; if scope changes, ask again.
+
 ## Remaining Issues (prioritized)
 1. **Answer bank matching too rigid** — exact hash match misses semantically similar questions
 2. **No auth on backend** — any visitorId can access any user's data
