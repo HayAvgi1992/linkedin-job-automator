@@ -36,6 +36,7 @@ export function ProfileSettings() {
               onChange={(e) => setProfileSettings({ country: e.target.value })}
               className="select"
             >
+              <option value="Israel">Israel</option>
               <option value="United States">United States</option>
               <option value="India">India</option>
               <option value="United Kingdom">United Kingdom</option>
