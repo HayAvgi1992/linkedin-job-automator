@@ -700,18 +700,26 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
 
   // ---- LinkedIn API forwarding ----
   if (request.action === 'searchLinkedInJobs' || request.action === 'getJobDetails') {
-    chrome.tabs.query({ active: true, url: '*://www.linkedin.com/*' }, (tabs) => {
-      if (tabs[0]?.id) {
-        chrome.tabs.sendMessage(tabs[0].id, request, (response) => {
-          if (chrome.runtime.lastError) {
-            sendResponse({ success: false, error: chrome.runtime.lastError.message });
-          } else {
-            sendResponse(response);
-          }
-        });
-      } else {
+    chrome.tabs.query({ active: true, url: '*://www.linkedin.com/*' }, async (tabs) => {
+      const tabId = tabs[0]?.id;
+      if (!tabId) {
         sendResponse({ success: false, error: 'Please open a LinkedIn page first' });
+        return;
       }
+
+      const ready = await ensureContentScript(tabId);
+      if (!ready) {
+        sendResponse({ success: false, error: 'LinkedIn content script is not ready. Refresh LinkedIn page and try again.' });
+        return;
+      }
+
+      chrome.tabs.sendMessage(tabId, request, (response) => {
+        if (chrome.runtime.lastError) {
+          sendResponse({ success: false, error: chrome.runtime.lastError.message });
+        } else {
+          sendResponse(response);
+        }
+      });
     });
     return true;
   }
