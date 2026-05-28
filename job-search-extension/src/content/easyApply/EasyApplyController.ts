@@ -8,7 +8,7 @@ import { SELECTORS } from './selectors';
 interface FormField {
   id: string;
   label: string;
-  type: 'text' | 'select' | 'radio' | 'checkbox' | 'textarea' | 'file';
+  type: 'text' | 'select' | 'radio' | 'checkbox' | 'textarea' | 'file' | 'typeahead';
   required: boolean;
   options?: string[];
   element: HTMLElement;
@@ -830,14 +830,28 @@ export class EasyApplyController {
           }
 
           if (validAnswer) {
-            await this.fillField(field, validAnswer);
+            const filled = await this.fillField(field, validAnswer);
+            if (!filled && field.required) {
+              console.log(`⚠️ Typeahead fill failed for required field: ${field.label}`);
+              return {
+                success: false,
+                needsInput: {
+                  field: field.label,
+                  type: field.type,
+                  ...(field.options ? { options: field.options } : {}),
+                },
+                questionsAnswered,
+              };
+            }
             // Verify the fill stuck for selects
             if (field.type === 'select') {
               const selectEl = field.element as HTMLSelectElement;
               try { chrome.runtime.sendMessage({ action: '_debug', msg: `Select verify: value="${selectEl.value}" selectedIndex=${selectEl.selectedIndex} (wanted="${validAnswer}")` }); } catch {}
             }
-            questionsAnswered++;
-            console.log(`✅ Filled: ${field.label} = ${validAnswer}`);
+            if (filled) {
+              questionsAnswered++;
+              console.log(`✅ Filled: ${field.label} = ${validAnswer}`);
+            }
           } else if (field.required) {
             console.log(`⚠️ No valid answer for required field: ${field.label}`);
             // Return needsInput so the extension popup handles it.
@@ -1081,11 +1095,17 @@ export class EasyApplyController {
       type = 'checkbox';
       inputElement = element as HTMLElement;
     }
-    // Default to text input
+    // Default to text input (or typeahead if ARIA combobox)
     else {
       const input = element.querySelector('input') as HTMLInputElement;
       if (input) {
-        type = 'text';
+        const ariaAutocomplete = input.getAttribute('aria-autocomplete');
+        const isCombobox =
+          input.getAttribute('role') === 'combobox' ||
+          ariaAutocomplete === 'list' ||
+          ariaAutocomplete === 'both' ||
+          !!input.getAttribute('aria-controls');
+        type = isCombobox ? 'typeahead' : 'text';
         inputElement = input;
         currentValue = input.value;
       }
@@ -1145,10 +1165,17 @@ export class EasyApplyController {
     const placeholder = input.placeholder;
     const label = labelFor?.textContent?.trim() || parentLabel?.textContent?.trim() || ariaLabel || placeholder || `Input ${index + 1}`;
 
+    const ariaAutocomplete = input.getAttribute('aria-autocomplete');
+    const isCombobox =
+      input.getAttribute('role') === 'combobox' ||
+      ariaAutocomplete === 'list' ||
+      ariaAutocomplete === 'both' ||
+      !!input.getAttribute('aria-controls');
+
     return {
       id: `input_${index}`,
       label,
-      type: 'text',
+      type: isCombobox ? 'typeahead' : 'text',
       required: input.required || input.getAttribute('aria-required') === 'true',
       element: input,
       currentValue: input.value,
@@ -1250,7 +1277,7 @@ export class EasyApplyController {
   /**
    * Fill a form field with a value
    */
-  private async fillField(field: FormField, value: string): Promise<void> {
+  private async fillField(field: FormField, value: string): Promise<boolean> {
     const element = field.element;
 
     switch (field.type) {
@@ -1304,6 +1331,89 @@ export class EasyApplyController {
         break;
       }
 
+      case 'typeahead': {
+        const input = element as HTMLInputElement;
+        console.log(`📝 Typeahead: searching for "${value}"`);
+
+        input.focus();
+        const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+        if (nativeSetter) {
+          nativeSetter.call(input, value);
+        } else {
+          input.value = value;
+        }
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+
+        const ariaControlsId = input.getAttribute('aria-controls');
+        const findOptions = (): HTMLElement[] => {
+          if (ariaControlsId) {
+            const listbox = document.getElementById(ariaControlsId);
+            if (listbox) {
+              const opts = Array.from(listbox.querySelectorAll('[role="option"], li')) as HTMLElement[];
+              if (opts.length > 0) return opts;
+            }
+          }
+          for (const lb of Array.from(document.querySelectorAll('[role="listbox"]'))) {
+            if ((lb as HTMLElement).offsetParent === null) continue;
+            const opts = Array.from(lb.querySelectorAll('[role="option"], li')) as HTMLElement[];
+            if (opts.length > 0) return opts;
+          }
+          const classFallback = Array.from(document.querySelectorAll(
+            '.basic-typeahead__triggered-content [role="option"], .basic-typeahead__triggered-content li, .artdeco-typeahead__result-list li'
+          )) as HTMLElement[];
+          return classFallback;
+        };
+
+        let options: HTMLElement[] = [];
+        const start = Date.now();
+        while (Date.now() - start < 2000) {
+          options = findOptions();
+          if (options.length > 0) break;
+          await sleep(100);
+        }
+
+        if (options.length === 0) {
+          console.warn(`⚠️ Typeahead: no listbox appeared for "${value}", bailing to needsInput`);
+          input.blur();
+          return false;
+        }
+
+        const valueLower = value.toLowerCase();
+        const exact = options.find(opt => opt.textContent?.trim().toLowerCase() === valueLower);
+        const contains = options.find(opt => {
+          const text = opt.textContent?.trim().toLowerCase() || '';
+          return text.includes(valueLower) || valueLower.includes(text);
+        });
+        const chosen = exact || contains;
+
+        if (!chosen) {
+          console.warn(`⚠️ Typeahead: no matching option found for "${value}", bailing to needsInput. Options:`,
+            options.map(o => o.textContent?.trim()));
+          input.blur();
+          return false;
+        }
+
+        const chosenText = chosen.textContent?.trim() || '';
+        console.log(`📝 Typeahead: clicked option "${chosenText}"`);
+        chosen.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+        chosen.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+        chosen.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        await sleep(150);
+
+        const inputValueLower = input.value.toLowerCase();
+        const chosenLower = chosenText.toLowerCase();
+        if (!inputValueLower.includes(chosenLower) && !chosenLower.includes(inputValueLower)) {
+          console.log(`📝 Typeahead: click did not commit, falling back to ArrowDown+Enter`);
+          input.focus();
+          input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+          await sleep(100);
+          input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+          await sleep(150);
+        }
+        input.blur();
+        break;
+      }
+
       case 'text':
       case 'textarea': {
         const input = element as HTMLInputElement | HTMLTextAreaElement;
@@ -1354,6 +1464,7 @@ export class EasyApplyController {
     }
 
     await sleep(100);
+    return true;
   }
 
   /**
