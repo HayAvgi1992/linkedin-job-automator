@@ -67,7 +67,7 @@ export function ResumeSection() {
       ) : (
         <div className={`${dropZoneClass} p-5 text-center`}>
           <Upload className="w-5 h-5 mx-auto mb-2 text-muted" />
-          <p className="text-xs font-medium text-accent">upload resume (only pdf)</p>
+          <p className="text-xs font-medium text-accent">Drop PDF anywhere on this popup</p>
           <p className="text-[10px] text-muted mt-1">Max 2MB</p>
         </div>
       )}
