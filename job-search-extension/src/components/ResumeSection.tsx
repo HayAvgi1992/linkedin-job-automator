@@ -1,13 +1,37 @@
 import { FileText, Upload } from 'lucide-react';
+import { useState } from 'react';
 import { useProfileStore } from '../store/profileStore';
 
 export function ResumeSection() {
-  const { resumeInfo, uploadResume } = useProfileStore();
+  const { resumeInfo, uploadResume, setMessage } = useProfileStore();
+  const [isDragging, setIsDragging] = useState(false);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) uploadResume(file);
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+    if (file.type !== 'application/pdf') {
+      setMessage('Only PDF files are supported');
+      setTimeout(() => setMessage(''), 3000);
+      return;
+    }
+    uploadResume(file);
   };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    if (!isDragging) setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const dropZoneClass = `border border-dashed rounded-lg transition-colors ${
+    isDragging ? 'border-accent bg-accent/5' : 'border-edge-hover'
+  }`;
 
   return (
     <div className="card">
@@ -17,13 +41,15 @@ export function ResumeSection() {
       </h3>
 
       {resumeInfo ? (
-        <div className="space-y-2">
+        <div
+          className={`${dropZoneClass} space-y-2 p-3`}
+          onDrop={handleDrop}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+        >
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-primary">{resumeInfo.fileName}</span>
-            <label className="text-[11px] text-accent cursor-pointer hover:underline">
-              Change
-              <input type="file" accept=".pdf" onChange={handleFileChange} className="hidden" />
-            </label>
+            <span className="text-[11px] text-accent">Drop PDF to replace</span>
           </div>
           <div className="text-[11px] text-secondary space-y-0.5">
             <p className="mono">{resumeInfo.yearsExperience} years experience</p>
@@ -31,12 +57,14 @@ export function ResumeSection() {
           </div>
         </div>
       ) : (
-        <div className="border border-dashed border-edge-hover rounded-lg p-5 text-center">
+        <div
+          className={`${dropZoneClass} p-5 text-center`}
+          onDrop={handleDrop}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+        >
           <Upload className="w-5 h-5 mx-auto mb-2 text-muted" />
-          <label className="cursor-pointer">
-            <span className="text-xs font-medium text-accent hover:underline">Upload Resume (PDF)</span>
-            <input type="file" accept=".pdf" onChange={handleFileChange} className="hidden" />
-          </label>
+          <p className="text-xs font-medium text-accent">Drop PDF here to upload</p>
           <p className="text-[10px] text-muted mt-1">Max 2MB</p>
         </div>
       )}
