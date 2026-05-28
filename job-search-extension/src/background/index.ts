@@ -410,6 +410,23 @@ interface BulkApplyStorageState {
 }
 
 let bulkApplyRunning = false;
+let shouldStopRequested = false;
+
+(async () => {
+  try {
+    const { bulkApplyState } = await chrome.storage.local.get('bulkApplyState');
+    const state = bulkApplyState as BulkApplyStorageState | undefined;
+    if (state?.isRunning && !bulkApplyRunning) {
+      state.isRunning = false;
+      state.shouldStop = false;
+      state.currentJobId = '';
+      state.currentJobTitle = '';
+      state.currentJobCompany = '';
+      await chrome.storage.local.set({ bulkApplyState: state });
+      console.warn('🧟 Reconciled zombie bulkApplyState on SW startup');
+    }
+  } catch {}
+})();
 
 async function handleBulkApply(jobs: BulkJob[], visitorId: string): Promise<void> {
   if (bulkApplyRunning) {
@@ -417,6 +434,7 @@ async function handleBulkApply(jobs: BulkJob[], visitorId: string): Promise<void
     return;
   }
   bulkApplyRunning = true;
+  shouldStopRequested = false;
 
   // Record the original active tab to focus back after all jobs are done
   let originalTabId: number | undefined;
@@ -445,10 +463,9 @@ async function handleBulkApply(jobs: BulkJob[], visitorId: string): Promise<void
   await chrome.storage.local.set({ bulkApplyState: state });
   console.log(`🚀 Background: Starting bulk apply for ${jobs.length} jobs`);
 
+  try {
   for (let i = 0; i < jobs.length; i++) {
-    // Check stop signal
-    const stored = await chrome.storage.local.get('bulkApplyState');
-    if ((stored.bulkApplyState as BulkApplyStorageState | undefined)?.shouldStop) {
+    if (shouldStopRequested) {
       console.log('🛑 Background: Stop signal received, cancelling remaining jobs');
       for (let j = i; j < jobs.length; j++) {
         state.results[j].status = 'cancelled';
@@ -583,10 +600,8 @@ async function handleBulkApply(jobs: BulkJob[], visitorId: string): Promise<void
       // Persist progress
       await chrome.storage.local.set({ bulkApplyState: state });
 
-      // Delay between jobs
       if (i < jobs.length - 1) {
-        const check = await chrome.storage.local.get('bulkApplyState');
-        if ((check.bulkApplyState as BulkApplyStorageState | undefined)?.shouldStop) {
+        if (shouldStopRequested) {
           for (let j = i + 1; j < jobs.length; j++) {
             state.results[j].status = 'cancelled';
           }
@@ -603,22 +618,24 @@ async function handleBulkApply(jobs: BulkJob[], visitorId: string): Promise<void
     }
   }
 
-  // Mark complete
-  state.isRunning = false;
-  state.currentJobId = '';
-  state.currentJobTitle = '';
-  state.currentJobCompany = '';
-  await chrome.storage.local.set({ bulkApplyState: state });
-  bulkApplyRunning = false;
+  } finally {
+    state.isRunning = false;
+    state.shouldStop = false;
+    state.currentJobId = '';
+    state.currentJobTitle = '';
+    state.currentJobCompany = '';
+    await chrome.storage.local.set({ bulkApplyState: state });
+    bulkApplyRunning = false;
+    shouldStopRequested = false;
 
-  const applied = state.results.filter(r => r.status === 'applied').length;
-  const failed = state.results.filter(r => r.status === 'failed').length;
-  const skipped = state.results.filter(r => r.status === 'skipped').length;
-  console.log(`🏁 Background: Bulk apply complete. ${applied} applied, ${failed} failed, ${skipped} skipped out of ${jobs.length}`);
+    const applied = state.results.filter(r => r.status === 'applied').length;
+    const failed = state.results.filter(r => r.status === 'failed').length;
+    const skipped = state.results.filter(r => r.status === 'skipped').length;
+    console.log(`🏁 Background: Bulk apply complete. ${applied} applied, ${failed} failed, ${skipped} skipped out of ${jobs.length}`);
 
-  // Focus back to the tab the user was on before bulk apply started
-  if (originalTabId) {
-    try { await chrome.tabs.update(originalTabId, { active: true }); } catch {}
+    if (originalTabId) {
+      try { await chrome.tabs.update(originalTabId, { active: true }); } catch {}
+    }
   }
 }
 
@@ -933,10 +950,21 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
 
   // Bulk apply — stop
   if (request.action === 'stopBulkApply') {
+    if (bulkApplyRunning) {
+      shouldStopRequested = true;
+    }
     chrome.storage.local.get('bulkApplyState', (result) => {
       const state = result.bulkApplyState as BulkApplyStorageState | undefined;
       if (state) {
-        state.shouldStop = true;
+        if (bulkApplyRunning) {
+          state.shouldStop = true;
+        } else {
+          state.isRunning = false;
+          state.shouldStop = false;
+          state.currentJobId = '';
+          state.currentJobTitle = '';
+          state.currentJobCompany = '';
+        }
         chrome.storage.local.set({ bulkApplyState: state });
       }
       sendResponse({ acknowledged: true });
