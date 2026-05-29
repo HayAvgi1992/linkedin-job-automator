@@ -127,7 +127,7 @@ async function ensureContentScript(tabId: number): Promise<boolean> {
 // WAIT FOR TAB READY + JOB PAGE RENDERED (Bug 4/5)
 // ============================================
 
-type PageState = 'easy_apply' | 'already_applied' | 'external_apply' | 'loading';
+type PageState = 'easy_apply' | 'already_applied' | 'external_apply' | 'no_longer_accepting' | 'loading';
 
 interface TabReadyResult {
   ready: boolean;
@@ -273,6 +273,9 @@ async function handleApplyToJob(
     }
     if (pageReady.pageState === 'external_apply') {
       return { success: false, skipped: true, skipReason: 'Not Easy Apply (external application)' };
+    }
+    if (pageReady.pageState === 'no_longer_accepting') {
+      return { success: false, error: 'No longer accepting applications' };
     }
 
     let response = await sendApplyAndWaitForComplete(tabId, visitorId);
@@ -520,6 +523,18 @@ async function handleBulkApply(jobs: BulkJob[], visitorId: string): Promise<void
         const sr = await chrome.storage.local.get('jobStatuses');
         const js = (sr.jobStatuses as Record<string, string>) || {};
         js[job.linkedinJobId] = 'applied';
+        await chrome.storage.local.set({ jobStatuses: js });
+        await chrome.storage.local.set({ bulkApplyState: state });
+        try { await chrome.tabs.remove(tabId); } catch {}
+        continue;
+      }
+
+      if (pageReady.pageState === 'no_longer_accepting') {
+        console.log(`🚫 Background: ${job.title} — no longer accepting applications`);
+        state.results[i] = { ...state.results[i], status: 'failed', error: 'No longer accepting applications', duration: Date.now() - jobStart };
+        const sr = await chrome.storage.local.get('jobStatuses');
+        const js = (sr.jobStatuses as Record<string, string>) || {};
+        js[job.linkedinJobId] = 'failed';
         await chrome.storage.local.set({ jobStatuses: js });
         await chrome.storage.local.set({ bulkApplyState: state });
         try { await chrome.tabs.remove(tabId); } catch {}
