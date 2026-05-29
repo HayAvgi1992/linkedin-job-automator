@@ -1,6 +1,7 @@
 import { create } from 'zustand';
-import type { AutoApplyStatus, MissingInputState, BulkApplyProgress, BulkApplyJobResult, BulkApplyState } from '../types';
+import type { AutoApplyStatus, MissingInputState, BulkApplyProgress, BulkApplyJobResult, BulkApplyState, BulkApplySettings } from '../types';
 import { useJobStore } from './jobStore';
+import { BULK_APPLY_SETTINGS_KEY, DEFAULT_BULK_APPLY_SETTINGS } from '../constants/bulkApply';
 
 interface SingleApplyResult {
   success?: boolean;
@@ -27,12 +28,16 @@ interface AutoApplyState {
   currentJobTitle: string;
   currentJobCompany: string;
 
+  // Bulk apply pacing settings — persisted to chrome.storage, read by background
+  bulkSettings: BulkApplySettings;
+
   // Actions
   setStatus: (status: AutoApplyStatus) => void;
   setMessage: (message: string) => void;
   setMissingInput: (input: MissingInputState | null) => void;
   setMissingInputValue: (value: string) => void;
   setBulkProgress: (progress: BulkApplyProgress) => void;
+  setBulkSettings: (settings: Partial<BulkApplySettings>) => void;
   syncFromBulkState: (state: BulkApplyState) => void;
   hydrate: () => Promise<void>;
   reset: () => void;
@@ -49,12 +54,19 @@ export const useAutoApplyStore = create<AutoApplyState>((set, get) => ({
   shouldStop: false,
   currentJobTitle: '',
   currentJobCompany: '',
+  bulkSettings: { ...DEFAULT_BULK_APPLY_SETTINGS },
 
   setStatus: (status) => set({ status }),
   setMessage: (message) => set({ message }),
   setMissingInput: (input) => set({ missingInput: input }),
   setMissingInputValue: (value) => set({ missingInputValue: value }),
   setBulkProgress: (progress) => set({ bulkProgress: progress }),
+
+  setBulkSettings: (partial) => {
+    const bulkSettings = { ...get().bulkSettings, ...partial };
+    set({ bulkSettings });
+    chrome.storage.local.set({ [BULK_APPLY_SETTINGS_KEY]: bulkSettings });
+  },
 
   syncFromBulkState: (state: BulkApplyState) => {
     const updates: Partial<AutoApplyState> = {
@@ -92,10 +104,15 @@ export const useAutoApplyStore = create<AutoApplyState>((set, get) => ({
 
   hydrate: async () => {
     return new Promise<void>((resolve) => {
-      chrome.storage.local.get(['bulkApplyState', 'lastSingleApplyResult'], (result: Record<string, any>) => {
+      chrome.storage.local.get(['bulkApplyState', 'lastSingleApplyResult', BULK_APPLY_SETTINGS_KEY], (result: Record<string, any>) => {
         const bulkState = result.bulkApplyState as BulkApplyState | undefined;
         if (bulkState) {
           get().syncFromBulkState(bulkState);
+        }
+
+        const storedSettings = result[BULK_APPLY_SETTINGS_KEY] as Partial<BulkApplySettings> | undefined;
+        if (storedSettings) {
+          set({ bulkSettings: { ...DEFAULT_BULK_APPLY_SETTINGS, ...storedSettings } });
         }
 
         // Restore single-apply state from background

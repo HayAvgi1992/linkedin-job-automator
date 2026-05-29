@@ -4,12 +4,43 @@
  * Syncs state to chrome.storage so popup can read progress on (re)open.
  */
 
+import type { BulkApplySettings } from '../types';
+import { BULK_APPLY_SETTINGS_KEY, DEFAULT_BULK_APPLY_SETTINGS } from '../constants/bulkApply';
+
 console.log('Job Search Extension - Background Service Worker Started');
 
 const API_BASE = 'http://localhost:3001';
 
-// Delay between bulk apply jobs (ms) — avoids LinkedIn rate limiting
-const BULK_APPLY_DELAY = 4000;
+// Delay between bulk apply jobs — avoids LinkedIn "applying too fast"
+// rate-limiting. The range is user-configurable from the popup (stored in
+// chrome.storage); read fresh before each wait so tuning applies mid-run.
+// Randomized within the range so the cadence looks human, not robotic.
+async function getBulkApplyDelayMs(): Promise<number> {
+  const stored = await chrome.storage.local.get(BULK_APPLY_SETTINGS_KEY);
+  const { delayMinSec, delayMaxSec } = {
+    ...DEFAULT_BULK_APPLY_SETTINGS,
+    ...((stored[BULK_APPLY_SETTINGS_KEY] as Partial<BulkApplySettings>) || {}),
+  };
+  const minMs = Math.max(0, delayMinSec * 1000);
+  const maxMs = Math.max(minMs, delayMaxSec * 1000);
+  return minMs + Math.floor(Math.random() * (maxMs - minMs));
+}
+
+// MV3 service workers can be killed after ~30s idle. A single long setTimeout
+// would let the worker die mid-delay and silently stop the bulk run. Sleep in
+// sub-30s chunks, touching chrome.storage each chunk to reset the idle timer,
+// and re-check the stop flag so a long delay stays interruptible.
+const SW_KEEPALIVE_CHUNK = 20000; // 20s
+async function interruptibleDelay(totalMs: number): Promise<void> {
+  let remaining = totalMs;
+  while (remaining > 0) {
+    if (shouldStopRequested) return;
+    const chunk = Math.min(SW_KEEPALIVE_CHUNK, remaining);
+    await new Promise(r => setTimeout(r, chunk));
+    await chrome.storage.local.get('bulkApplyState');
+    remaining -= chunk;
+  }
+}
 
 // ============================================
 // SEND MESSAGE WITH ERROR HANDLING
@@ -622,7 +653,9 @@ async function handleBulkApply(jobs: BulkJob[], visitorId: string): Promise<void
           }
           break;
         }
-        await new Promise(r => setTimeout(r, BULK_APPLY_DELAY));
+        const delayMs = await getBulkApplyDelayMs();
+        console.log(`⏳ Background: Waiting ${Math.round(delayMs / 1000)}s before next job (human-pacing)...`);
+        await interruptibleDelay(delayMs);
       }
     } catch (err: any) {
       state.results[i] = { ...state.results[i], status: 'failed', error: err.message, duration: Date.now() - jobStart };
