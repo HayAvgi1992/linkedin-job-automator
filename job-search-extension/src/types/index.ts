@@ -69,6 +69,11 @@ export interface BulkApplyProgress {
   total: number;
 }
 
+export interface BulkApplySettings {
+  delayMinSec: number;
+  delayMaxSec: number;
+}
+
 export interface BulkApplyJobResult {
   jobId: string;
   title: string;

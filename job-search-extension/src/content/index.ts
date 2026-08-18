@@ -692,8 +692,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         const spans = area.querySelectorAll('span, div, li');
         for (const el of spans) {
           const text = el.textContent?.trim().toLowerCase() || '';
-          // Match "Applied" but not "applicants" or "apply"
-          if (text === 'applied' || text === 'applied ✓' || text.startsWith('applied ')) {
+          // Match "Applied" but not "applicants" or "apply".
+          // Also match "Application submitted" shown under "Application status"
+          // when a previously-applied job reappears in the list.
+          if (text === 'applied' || text === 'applied ✓' || text.startsWith('applied ') || text.includes('application submitted')) {
             alreadyApplied = true;
             break;
           }
@@ -705,6 +707,25 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (alreadyApplied) {
       sendResponse({ ready: true, pageState: 'already_applied' });
       return false;
+    }
+
+    // --- Check 1b: "No longer accepting applications" ---
+    // Job is closed — there will be no Easy Apply button. Detect explicitly so
+    // we report an accurate status instead of timing out as "Page load timeout".
+    const closedSearchAreas = document.querySelectorAll(
+      '.job-details-jobs-unified-top-card__primary-description-container, ' +
+      '.jobs-unified-top-card, ' +
+      '.jobs-details-top-card, ' +
+      '.job-details-jobs-unified-top-card__container--two-pane, ' +
+      '.jobs-apply-button--top-card, ' +
+      '.scaffold-layout__detail'
+    );
+    for (const area of closedSearchAreas) {
+      if (area.textContent?.toLowerCase().includes('no longer accepting applications')) {
+        console.log('🚫 Page loaded but job is no longer accepting applications');
+        sendResponse({ ready: true, pageState: 'no_longer_accepting' });
+        return false;
+      }
     }
 
     // --- Check 2: Easy Apply button ---

@@ -1,8 +1,14 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Zap, Briefcase, Loader2, Square, Clock, ChevronDown, ChevronUp, CheckCircle2, XCircle, AlertTriangle, Ban } from 'lucide-react';
 import { useJobStore } from '../store/jobStore';
 import { useAutoApplyStore } from '../store/autoApplyStore';
 import { useAutoApply } from '../hooks/useAutoApply';
+import { BULK_APPLY_DELAY_BOUNDS } from '../constants/bulkApply';
+
+function clampDelay(seconds: number): number {
+  if (Number.isNaN(seconds)) return BULK_APPLY_DELAY_BOUNDS.minSec;
+  return Math.min(BULK_APPLY_DELAY_BOUNDS.maxSec, Math.max(BULK_APPLY_DELAY_BOUNDS.minSec, Math.round(seconds)));
+}
 
 function formatDuration(ms: number): string {
   const seconds = Math.floor(ms / 1000);
@@ -15,10 +21,30 @@ function formatDuration(ms: number): string {
 
 export function BulkApplySection() {
   const { jobs, jobStatuses } = useJobStore();
-  const { status, message, bulkProgress, bulkResults, bulkStartedAt, currentJobTitle, currentJobCompany } = useAutoApplyStore();
+  const { status, message, bulkProgress, bulkResults, bulkStartedAt, currentJobTitle, currentJobCompany, bulkSettings, setBulkSettings } = useAutoApplyStore();
   const { startAutoApply, startBulkAutoApply, stopBulkApply, clearBulkResults } = useAutoApply();
   const [showDetails, setShowDetails] = useState(false);
   const [showCancelled, setShowCancelled] = useState(false);
+
+  // Local draft for the delay inputs so the user can type freely; we clamp and
+  // reconcile (min <= max) only on commit (blur / Enter), not on every keystroke.
+  const [minDraft, setMinDraft] = useState(String(bulkSettings.delayMinSec));
+  const [maxDraft, setMaxDraft] = useState(String(bulkSettings.delayMaxSec));
+
+  useEffect(() => {
+    setMinDraft(String(bulkSettings.delayMinSec));
+    setMaxDraft(String(bulkSettings.delayMaxSec));
+  }, [bulkSettings.delayMinSec, bulkSettings.delayMaxSec]);
+
+  const commitMinDelay = () => {
+    const delayMinSec = clampDelay(+minDraft);
+    setBulkSettings({ delayMinSec, delayMaxSec: Math.max(delayMinSec, bulkSettings.delayMaxSec) });
+  };
+
+  const commitMaxDelay = () => {
+    const delayMaxSec = clampDelay(+maxDraft);
+    setBulkSettings({ delayMaxSec, delayMinSec: Math.min(delayMaxSec, bulkSettings.delayMinSec) });
+  };
 
   const isRunning = status === 'running';
   const isBulkRunning = isRunning && bulkProgress.total > 0;
@@ -199,6 +225,39 @@ export function BulkApplySection() {
                 )}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Pacing controls — delay between jobs (avoids LinkedIn rate-limiting) */}
+        {!isBulkRunning && (
+          <div className="mb-3 flex items-center gap-2">
+            <span className="text-[11px] text-secondary flex items-center gap-1 shrink-0">
+              <Clock className="w-3 h-3" /> Delay between jobs
+            </span>
+            <div className="flex items-center gap-1 ml-auto">
+              <input
+                type="number"
+                min={BULK_APPLY_DELAY_BOUNDS.minSec}
+                max={BULK_APPLY_DELAY_BOUNDS.maxSec}
+                value={minDraft}
+                onChange={(e) => setMinDraft(e.target.value)}
+                onBlur={commitMinDelay}
+                onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                className="input w-14 text-center mono"
+              />
+              <span className="text-[11px] text-muted">–</span>
+              <input
+                type="number"
+                min={BULK_APPLY_DELAY_BOUNDS.minSec}
+                max={BULK_APPLY_DELAY_BOUNDS.maxSec}
+                value={maxDraft}
+                onChange={(e) => setMaxDraft(e.target.value)}
+                onBlur={commitMaxDelay}
+                onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                className="input w-14 text-center mono"
+              />
+              <span className="text-[11px] text-muted">sec</span>
+            </div>
           </div>
         )}
 
